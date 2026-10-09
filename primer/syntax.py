@@ -1,0 +1,167 @@
+"""Text form: tokenizer, expression parser and printer.
+
+Text form is space-separated tokens. A token with a payload is written
+NAME<payload> or NAME⟨payload⟩ (the payload may contain spaces). Every
+operator has a fixed arity from vocab.toml, so expressions need no brackets.
+
+AST nodes are tuples:
+  ("lit", value) ("var", i) ("word", "NEW3") ("slot", "R0", value|MISSING)
+  ("op", name, [args]) ("lam", body) ("let", value, body)
+  ("list", [items]) ("rec", [k1, v1, k2, v2, ...]) ("hole",)
+"""
+import re
+from dataclasses import dataclass
+
+from .values import parse_payload, show
+from .vocab import VOCAB
+
+PAYLOAD_KINDS = {"NUM", "INT", "STR", "TIME", "REC"}
+MISSING = object()
+_TOKEN = re.compile(r"(\w+)[<⟨](.*?)[>⟩]|(\S+)")
+
+
+@dataclass(frozen=True)
+class Tok:
+    name: str
+    payload: str | None = None
+
+    def __str__(self):
+        return self.name if self.payload is None else f"{self.name}<{self.payload}>"
+
+
+class SyntaxErr(Exception):
+    pass
+
+
+def tokenize(text):
+    toks = []
+    for m in _TOKEN.finditer(text):
+        name, payload = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), None)
+        if name not in VOCAB:
+            raise SyntaxErr(f"unknown token {name!r}")
+        toks.append(Tok(name, payload))
+    return toks
+
+
+class Parser:
+    def __init__(self, toks, pos=0):
+        self.toks, self.pos = toks, pos
+
+    def peek(self, offset=0):
+        i = self.pos + offset
+        return self.toks[i] if i < len(self.toks) else None
+
+    def next(self):
+        t = self.peek()
+        if t is None:
+            raise SyntaxErr("unexpected end of tokens")
+        self.pos += 1
+        return t
+
+    def expect(self, name):
+        t = self.next()
+        if t.name != name:
+            raise SyntaxErr(f"expected {name}, got {t}")
+        return t
+
+    def at(self, *names):
+        t = self.peek()
+        return t is not None and t.name in names
+
+    def expr(self):
+        t = self.next()
+        n, tok = t.name, VOCAB[t.name]
+        if n in PAYLOAD_KINDS:
+            if t.payload is None:
+                raise SyntaxErr(f"{n} needs a payload")
+            try:
+                return ("lit", parse_payload(n, t.payload))
+            except ValueError as e:
+                raise SyntaxErr(str(e)) from None
+        if t.payload is not None and tok.family != "R":
+            raise SyntaxErr(f"{n} takes no payload")
+        if n == "TRUE":
+            return ("lit", True)
+        if n == "FALSE":
+            return ("lit", False)
+        if n == "NONE":
+            return ("lit", None)
+        if n == "HOLE":
+            return ("hole",)
+        if tok.family == "V":
+            return ("var", tok.index)
+        if tok.family == "NEW":
+            return ("word", n)
+        if tok.family == "R":
+            if t.payload is None:
+                return ("slot", n, MISSING)
+            kind_name, _, rest = t.payload.strip().partition(" ")
+            try:
+                return ("slot", n, parse_payload(kind_name, rest))
+            except ValueError as e:
+                raise SyntaxErr(f"bad slot payload {t.payload!r}: {e}") from None
+        if n == "[":
+            items = []
+            while not self.at("]"):
+                items.append(self.expr())
+            self.next()
+            return ("list", items)
+        if n == "{":
+            items = []
+            while not self.at("}"):
+                items.append(self.expr())
+            self.next()
+            if len(items) % 2:
+                raise SyntaxErr("record needs key value pairs")
+            return ("rec", items)
+        if n == "LAM":
+            return ("lam", self.expr())
+        if n == "LET":
+            return ("let", self.expr(), self.expr())
+        if tok.group == 4 or n in ("NOT", "AND", "OR", "IMPLIES", "EQ", "NEQ", "IF", "LT", "GT"):
+            return ("op", n, [self.expr() for _ in range(tok.arity)])
+        raise SyntaxErr(f"{t} cannot start an expression")
+
+
+def parse_expr(text):
+    p = Parser(tokenize(text))
+    e = p.expr()
+    if p.peek() is not None:
+        raise SyntaxErr(f"trailing tokens from {p.peek()}")
+    return e
+
+
+def is_literal(node):
+    """Already a value: needs no evaluation, so no result follows it."""
+    tag = node[0]
+    if tag == "lit":
+        return True
+    if tag in ("list", "rec"):
+        return all(is_literal(x) for x in (node[1]))
+    return False
+
+
+def unparse(node):
+    """AST back to text form."""
+    tag = node[0]
+    if tag == "lit":
+        return show(node[1])
+    if tag == "var":
+        return f"V{node[1]}"
+    if tag == "word":
+        return node[1]
+    if tag == "slot":
+        return node[1] if node[2] is MISSING else f"{node[1]}<{show(node[2]).replace('<', ' ', 1).rstrip('>')}>"
+    if tag == "hole":
+        return "HOLE"
+    if tag == "lam":
+        return "LAM " + unparse(node[1])
+    if tag == "let":
+        return f"LET {unparse(node[1])} {unparse(node[2])}"
+    if tag == "list":
+        return " ".join(["[", *map(unparse, node[1]), "]"])
+    if tag == "rec":
+        return " ".join(["{", *map(unparse, node[1]), "}"])
+    if tag == "op":
+        return " ".join([node[1], *map(unparse, node[2])])
+    raise ValueError(node)

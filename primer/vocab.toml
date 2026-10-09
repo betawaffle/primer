@@ -1,0 +1,582 @@
+# primer vocabulary: the single source of truth for token ids, arity and types.
+# Ids are append-only: never renumber or reuse one. Add new tokens at the end.
+# args: argument types in order (their count is the arity). ret: result type.
+# vsa: what the fixed half of the embedding is (atom, ordered, computed, zero).
+# count: a numbered range, e.g. R with count 64 is R0..R63 on consecutive ids.
+
+[[token]]
+id = 0
+name = "BOS"
+group = 1
+vsa = "atom"
+
+[[token]]
+id = 1
+name = "END"
+group = 1
+vsa = "atom"
+
+[[token]]
+id = 2
+name = "PAD"
+group = 1
+vsa = "zero"
+
+[[token]]
+id = 3
+name = "["
+group = 1
+vsa = "atom"
+
+[[token]]
+id = 4
+name = "]"
+group = 1
+vsa = "atom"
+
+[[token]]
+id = 5
+name = "{"
+group = 1
+vsa = "atom"
+
+[[token]]
+id = 6
+name = "}"
+group = 1
+vsa = "atom"
+
+[[token]]
+id = 7
+name = "HOLE"
+group = 1
+vsa = "atom"
+
+[[token]]
+id = 8
+name = "TRUE"
+group = 2
+ret = "BOOL"
+vsa = "atom"
+
+[[token]]
+id = 9
+name = "FALSE"
+group = 2
+ret = "BOOL"
+vsa = "atom"
+
+[[token]]
+id = 10
+name = "NOT"
+group = 2
+args = ["BOOL"]
+ret = "BOOL"
+vsa = "atom"
+
+[[token]]
+id = 11
+name = "AND"
+group = 2
+args = ["BOOL", "BOOL"]
+ret = "BOOL"
+vsa = "atom"
+note = "lazy in second argument"
+
+[[token]]
+id = 12
+name = "OR"
+group = 2
+args = ["BOOL", "BOOL"]
+ret = "BOOL"
+vsa = "atom"
+note = "lazy in second argument"
+
+[[token]]
+id = 13
+name = "IMPLIES"
+group = 2
+args = ["BOOL", "BOOL"]
+ret = "BOOL"
+vsa = "atom"
+note = "lazy in second argument"
+
+[[token]]
+id = 14
+name = "EQ"
+group = 2
+args = ["ANY", "ANY"]
+ret = "BOOL"
+vsa = "atom"
+
+[[token]]
+id = 15
+name = "NEQ"
+group = 2
+args = ["ANY", "ANY"]
+ret = "BOOL"
+vsa = "atom"
+
+[[token]]
+id = 16
+name = "IF"
+group = 2
+args = ["BOOL", "ANY", "ANY"]
+ret = "ANY"
+vsa = "atom"
+note = "only the taken branch is evaluated"
+
+[[token]]
+id = 17
+name = "NUM"
+group = 3
+ret = "NUM"
+vsa = "computed"
+note = "carries a payload"
+
+[[token]]
+id = 18
+name = "INT"
+group = 3
+ret = "INT"
+vsa = "computed"
+note = "carries a payload"
+
+[[token]]
+id = 19
+name = "TIME"
+group = 3
+ret = "TIME"
+vsa = "computed"
+note = "carries a payload"
+
+[[token]]
+id = 20
+name = "STR"
+group = 3
+ret = "STR"
+vsa = "computed"
+note = "carries a payload"
+
+[[token]]
+id = 21
+name = "REC"
+group = 3
+ret = "REC"
+vsa = "computed"
+note = "carries a payload"
+
+[[token]]
+id = 22
+name = "NONE"
+group = 3
+ret = "NONE"
+vsa = "atom"
+
+[[token]]
+id = 23
+name = "LT"
+group = 3
+args = ["ORD", "ORD"]
+ret = "BOOL"
+vsa = "atom"
+
+[[token]]
+id = 24
+name = "GT"
+group = 3
+args = ["ORD", "ORD"]
+ret = "BOOL"
+vsa = "atom"
+
+[[token]]
+id = 25
+name = "R"
+group = 3
+ret = "ANY"
+vsa = "ordered"
+count = 64
+note = "slot; payload binds its value"
+
+[[token]]
+id = 89
+name = "V"
+group = 3
+ret = "ANY"
+vsa = "ordered"
+count = 8
+note = "de Bruijn variable; V0 = nearest binder"
+
+[[token]]
+id = 97
+name = "NEW"
+group = 3
+ret = "ANY"
+vsa = "ordered"
+count = 16
+note = "fresh word, meaning set inside one sequence"
+
+[[token]]
+id = 113
+name = "LAM"
+group = 4
+args = ["BODY"]
+ret = "FUN"
+vsa = "atom"
+note = "binds V0 inside its body"
+
+[[token]]
+id = 114
+name = "APP"
+group = 4
+args = ["FUN", "ANY"]
+ret = "ANY"
+vsa = "atom"
+
+[[token]]
+id = 115
+name = "LET"
+group = 4
+args = ["ANY", "BODY"]
+ret = "ANY"
+vsa = "atom"
+note = "binds the first argument as V0 inside the body"
+
+[[token]]
+id = 116
+name = "ADD"
+group = 4
+args = ["NUMERIC", "NUMERIC"]
+ret = "NUMERIC"
+vsa = "atom"
+
+[[token]]
+id = 117
+name = "SUB"
+group = 4
+args = ["NUMERIC", "NUMERIC"]
+ret = "NUMERIC"
+vsa = "atom"
+
+[[token]]
+id = 118
+name = "MUL"
+group = 4
+args = ["NUMERIC", "NUMERIC"]
+ret = "NUMERIC"
+vsa = "atom"
+
+[[token]]
+id = 119
+name = "DIV"
+group = 4
+args = ["NUMERIC", "NUMERIC"]
+ret = "NUMERIC"
+vsa = "atom"
+
+[[token]]
+id = 120
+name = "MIN"
+group = 4
+args = ["NUMERIC", "NUMERIC"]
+ret = "NUMERIC"
+vsa = "atom"
+
+[[token]]
+id = 121
+name = "MAX"
+group = 4
+args = ["NUMERIC", "NUMERIC"]
+ret = "NUMERIC"
+vsa = "atom"
+
+[[token]]
+id = 122
+name = "NEG"
+group = 4
+args = ["NUMERIC"]
+ret = "NUMERIC"
+vsa = "atom"
+
+[[token]]
+id = 123
+name = "ABS"
+group = 4
+args = ["NUMERIC"]
+ret = "NUMERIC"
+vsa = "atom"
+
+[[token]]
+id = 124
+name = "LOG"
+group = 4
+args = ["NUMERIC"]
+ret = "NUM"
+vsa = "atom"
+
+[[token]]
+id = 125
+name = "EXP"
+group = 4
+args = ["NUMERIC"]
+ret = "NUM"
+vsa = "atom"
+
+[[token]]
+id = 126
+name = "LEN"
+group = 4
+args = ["LIST"]
+ret = "INT"
+vsa = "atom"
+
+[[token]]
+id = 127
+name = "GET"
+group = 4
+args = ["LIST", "INT"]
+ret = "ANY"
+vsa = "atom"
+
+[[token]]
+id = 128
+name = "MAP"
+group = 4
+args = ["FUN", "LIST"]
+ret = "LIST"
+vsa = "atom"
+
+[[token]]
+id = 129
+name = "FILTER"
+group = 4
+args = ["FUN", "LIST"]
+ret = "LIST"
+vsa = "atom"
+
+[[token]]
+id = 130
+name = "FOLD"
+group = 4
+args = ["FUN", "ANY", "LIST"]
+ret = "ANY"
+vsa = "atom"
+note = "f is curried: f acc x"
+
+[[token]]
+id = 131
+name = "SORT"
+group = 4
+args = ["LIST"]
+ret = "LIST"
+vsa = "atom"
+
+[[token]]
+id = 132
+name = "TOPK"
+group = 4
+args = ["LIST", "INT"]
+ret = "LIST"
+vsa = "atom"
+
+[[token]]
+id = 133
+name = "ARGMIN"
+group = 4
+args = ["LIST"]
+ret = "INT"
+vsa = "atom"
+
+[[token]]
+id = 134
+name = "ARGMAX"
+group = 4
+args = ["LIST"]
+ret = "INT"
+vsa = "atom"
+
+[[token]]
+id = 135
+name = "RANGE"
+group = 4
+args = ["INT"]
+ret = "LIST"
+vsa = "atom"
+
+[[token]]
+id = 136
+name = "FIELD"
+group = 4
+args = ["REC", "STR"]
+ret = "ANY"
+vsa = "atom"
+
+[[token]]
+id = 137
+name = "WITH"
+group = 4
+args = ["REC", "STR", "ANY"]
+ret = "REC"
+vsa = "atom"
+
+[[token]]
+id = 138
+name = "KEYS"
+group = 4
+args = ["REC"]
+ret = "LIST"
+vsa = "atom"
+
+[[token]]
+id = 139
+name = "BIND"
+group = 4
+args = ["VEC", "VEC"]
+ret = "VEC"
+vsa = "atom"
+
+[[token]]
+id = 140
+name = "UNBIND"
+group = 4
+args = ["VEC", "VEC"]
+ret = "VEC"
+vsa = "atom"
+
+[[token]]
+id = 141
+name = "BUNDLE"
+group = 4
+args = ["VEC", "VEC"]
+ret = "VEC"
+vsa = "atom"
+
+[[token]]
+id = 142
+name = "SIM"
+group = 4
+args = ["VEC", "VEC"]
+ret = "NUM"
+vsa = "atom"
+
+[[token]]
+id = 143
+name = "CLEAN"
+group = 4
+args = ["VEC"]
+ret = "ANY"
+vsa = "atom"
+
+[[token]]
+id = 144
+name = "EVAL"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 145
+name = "RESULT"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 146
+name = "DEF"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 147
+name = "EXPAND"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 148
+name = "EX"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 149
+name = "IS"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 150
+name = "ISNOT"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 151
+name = "ASK"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 152
+name = "YES"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 153
+name = "NO"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 154
+name = "SAME"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 155
+name = "DIFF"
+group = 5
+vsa = "atom"
+
+[[token]]
+id = 156
+name = "GOAL"
+group = 6
+vsa = "atom"
+
+[[token]]
+id = 157
+name = "ACT"
+group = 6
+vsa = "atom"
+
+[[token]]
+id = 158
+name = "OBS"
+group = 6
+vsa = "atom"
+
+[[token]]
+id = 159
+name = "OK"
+group = 6
+vsa = "atom"
+
+[[token]]
+id = 160
+name = "ERR"
+group = 6
+vsa = "atom"
+
+[[token]]
+id = 161
+name = "BUDGET"
+group = 6
+vsa = "atom"
+
+[[token]]
+id = 162
+name = "DONE"
+group = 6
+vsa = "atom"
