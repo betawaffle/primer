@@ -4,7 +4,7 @@ Decisions Andy has agreed to in the project's design threads that the code doesn
 
 ## What the system is for
 
-- First use (2026-10-09): the box runs and improves its own ML experiments in a sandbox (Lab v0). Uses will be ML and programming experiments generally.
+- Uses will be ML and programming experiments generally. Lab v0 (the box running its own experiments) is an idea, not a decision: something simpler comes first, and a harness comes before any lab (2026-10-10).
 - No general English. English appears only at the edge, through a translator (Claude now, a tiny trained one later).
 - Never put in weights what can be looked up: facts live in the run store and other stores, reached by actions.
 
