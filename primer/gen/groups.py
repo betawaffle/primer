@@ -7,9 +7,8 @@ Answers are always computed by the interpreter, never written by hand, so a
 generator can be wrong only about *what* to ask, never about the answer.
 """
 import datetime as dt
-import math
 
-from ..check import compare_functions, steps
+from ..check import bits, compare_functions, steps
 from ..edit import apply_edit, occurrences
 from ..interp import Context, apply, evaluate, remember_literals
 from ..syntax import SPECIAL_FORMS, is_literal, parse_expr, quote, tokenize, unparse
@@ -453,10 +452,6 @@ def _draw_list(r):
     return ("list", [lit(r.randint(-5, 20)) for _ in range(r.randint(1, 8))])
 
 
-def _bits(p, outcome):
-    return 0.0 - math.log2(p if outcome else 1 - p)   # 0.0 - avoids printing -0
-
-
 def _chance(r, pred, xs):
     """The exact chance, mostly avoiding the certain cases 0 and 1."""
     p = _eval(op("CHANCE", pred, xs))
@@ -498,7 +493,7 @@ def group10(r, bet_on_word=None):
         bet = f"BET {show(p)} {pred_text} {unparse(xs)}"
         tail = f"DRAW {show(x)} {'YES' if hit else 'NO'}"
         if r.random() < 0.7:
-            tail += f" SURPRISE {show(_bits(p, hit))}"
+            tail += f" SURPRISE {show(bits(p, hit))}"
         if i == rounds - 1 and r.random() < 0.15:
             text = " ".join(["BOS", *parts, f"BET HOLE {pred_text} {unparse(xs)}", tail, "END", show(p), "END"])
             return text, None

@@ -12,9 +12,9 @@ split is composing pieces it learned apart, not recalling what it saw.
   wrap_at       a WRAP that needs AT (training has WRAP and AT, never together)
 """
 from .check import sequence_items
-from .syntax import SyntaxErr
+from .syntax import SyntaxErr, children
 
-TAGS = {"lit", "var", "word", "slot", "op", "lam", "let", "list", "rec", "hole"}
+TAGS = {"lit", "var", "word", "slot", "op", "lam", "let", "list", "rec", "hole", "part"}
 DEEP_OPS = 8   # under 0.3% of ordinary generated sequences reach this
 
 
@@ -28,23 +28,10 @@ def nodes(x):
                 yield from nodes(y)
 
 
-def _children(n):
-    tag = n[0]
-    if tag == "op":
-        return n[2]
-    if tag in ("list", "rec"):
-        return n[1]
-    if tag == "lam":
-        return [n[1]]
-    if tag == "let":
-        return [n[1], n[2]]
-    return []
-
-
 def op_depth(n):
-    """How many operators (including LAM and LET) are nested along the deepest path."""
-    d = max((op_depth(k) for k in _children(n)), default=0)
-    return d + (n[0] in ("op", "lam", "let"))
+    """How many operators (including LAM, LET and PART) are nested along the deepest path."""
+    d = max((op_depth(k) for k in children(n)), default=0)
+    return d + (n[0] in ("op", "lam", "let", "part"))
 
 
 def _fold_in_map(items):

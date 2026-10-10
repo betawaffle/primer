@@ -9,7 +9,7 @@ old is matched by its text, like a find-and-replace, and must occur exactly
 once; when it occurs more than once, AT INT<k> before the edit picks the k-th
 occurrence (0-based, in reading order).
 """
-from .syntax import unparse
+from .syntax import children, unparse, with_children
 
 
 class EditErr(Exception):
@@ -17,43 +17,18 @@ class EditErr(Exception):
 
 
 def subtrees(node, path=()):
-    """Yield (path, node) for every subexpression."""
+    """Yield (path, node) for every subexpression; a path is the child index at each level."""
     yield path, node
-    tag = node[0]
-    if tag == "op":
-        for i, a in enumerate(node[2]):
-            yield from subtrees(a, path + (2, i))
-    elif tag in ("list", "rec"):
-        for i, a in enumerate(node[1]):
-            yield from subtrees(a, path + (1, i))
-    elif tag == "lam":
-        yield from subtrees(node[1], path + (1,))
-    elif tag == "let":
-        yield from subtrees(node[1], path + (1,))
-        yield from subtrees(node[2], path + (2,))
+    for i, k in enumerate(children(node)):
+        yield from subtrees(k, path + (i,))
 
 
 def replace(node, path, new):
     if not path:
         return new
-    k, rest = path[0], path[1:]
-    if node[0] in ("op",) and k == 2:
-        i, rest = rest[0], rest[1:]
-        args = list(node[2])
-        args[i] = replace(args[i], rest, new)
-        return ("op", node[1], args)
-    if node[0] in ("list", "rec") and k == 1:
-        i, rest = rest[0], rest[1:]
-        items = list(node[1])
-        items[i] = replace(items[i], rest, new)
-        return (node[0], items)
-    if node[0] == "lam":
-        return ("lam", replace(node[1], rest, new))
-    if node[0] == "let":
-        parts = list(node)
-        parts[k] = replace(node[k], rest, new)
-        return tuple(parts)
-    raise ValueError(path)
+    kids = children(node)
+    kids[path[0]] = replace(kids[path[0]], path[1:], new)
+    return with_children(node, kids)
 
 
 def occurrences(node, old):

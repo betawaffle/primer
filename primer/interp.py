@@ -8,7 +8,7 @@ or from the model can always be run safely.
 import math
 
 from . import vsa
-from .syntax import MISSING, SyntaxErr, quote, tokenize
+from .syntax import MISSING, SyntaxErr, children, quote, tokenize
 from .values import ERR, Closure, Ostensive, Sym, kind, numeric, valeq
 from .vocab import VOCAB
 
@@ -331,15 +331,5 @@ def remember_literals(node, ctx):
         ctx.remember(node[1])
     elif tag == "slot" and node[2] is not MISSING:
         ctx.remember(node[2])
-    elif tag in ("list", "rec"):
-        for x in node[1]:
-            remember_literals(x, ctx)
-    elif tag == "op":
-        for x in node[2]:
-            remember_literals(x, ctx)
-    elif tag == "lam":
-        remember_literals(node[1], ctx)
-    elif tag == "let":
-        remember_literals(node[1], ctx)
-        remember_literals(node[2], ctx)
-
+    for k in children(node):
+        remember_literals(k, ctx)

@@ -272,9 +272,10 @@ def retracted_spans(text):
     return spans
 
 
-def _bits(p, outcome):
+def bits(p, outcome):
+    """Surprise in bits of an outcome that a bet gave probability p to happen."""
     q = p if outcome else 1 - p
-    return -math.log2(q) if q > 0 else math.inf
+    return 0.0 - math.log2(q) if q > 0 else math.inf   # 0.0 - avoids printing -0
 
 
 def check(text, truth=None, bets="exact", agenda=()):
@@ -314,7 +315,7 @@ def check(text, truth=None, bets="exact", agenda=()):
 
     def settle(outcome):
         b, bet["open"] = bet["open"], None
-        b["outcome"], b["bits"] = outcome, _bits(b["p"], outcome)
+        b["outcome"], b["bits"] = outcome, bits(b["p"], outcome)
         rep.scores.append({"p": b["p"], "outcome": outcome, "bits": b["bits"]})
         bet["settled"] = b
 

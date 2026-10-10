@@ -197,6 +197,8 @@ def substitute(node, value, depth=0):
         return ("lam", substitute(node[1], value, depth + 1))
     if tag == "let":
         return ("let", substitute(node[1], value, depth), substitute(node[2], value, depth + 1))
+    if tag == "part":
+        return ("part", node[1], substitute(node[2], value, depth))
     return node
 
 
@@ -213,6 +215,8 @@ def uses_var(node, i, depth=0):
         return uses_var(node[1], i, depth + 1)
     if tag == "let":
         return uses_var(node[1], i, depth) or uses_var(node[2], i, depth + 1)
+    if tag == "part":
+        return uses_var(node[2], i, depth)
     return False
 
 

@@ -158,6 +158,39 @@ def quote(text):
     return Quote(unparse(parse_expr(text)), True)
 
 
+def children(node):
+    """The direct subexpressions of an AST node, in reading order. Every walk
+    over expressions goes through this, so a new node type is added in one place."""
+    tag = node[0]
+    if tag == "op":
+        return list(node[2])
+    if tag in ("list", "rec"):
+        return list(node[1])
+    if tag == "lam":
+        return [node[1]]
+    if tag == "let":
+        return [node[1], node[2]]
+    if tag == "part":
+        return [node[2]]
+    return []
+
+
+def with_children(node, kids):
+    """node with its direct subexpressions replaced by kids (same order as children)."""
+    tag = node[0]
+    if tag == "op":
+        return ("op", node[1], list(kids))
+    if tag in ("list", "rec"):
+        return (tag, list(kids))
+    if tag == "lam":
+        return ("lam", kids[0])
+    if tag == "let":
+        return ("let", kids[0], kids[1])
+    if tag == "part":
+        return ("part", node[1], kids[0])
+    return node
+
+
 def is_literal(node):
     """Already a value: needs no evaluation, so no result follows it."""
     tag = node[0]
