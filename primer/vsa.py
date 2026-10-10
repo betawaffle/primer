@@ -136,7 +136,7 @@ def enc_time(t):
 
 def encode(v):
     """Vector for any encodable primer value. Raises TypeError for functions."""
-    from .values import Closure, Ostensive
+    from .values import Closure, Ostensive, Quote, Sym
     if isinstance(v, np.ndarray):
         return v
     if v is True:
@@ -163,6 +163,15 @@ def encode(v):
         for i, x in enumerate(v):
             out = out + bind(_fpe(_W_POS, i), encode(x))
         return out
+    if isinstance(v, Sym):
+        return atom(v.name)
+    if isinstance(v, Quote):
+        # Tokens by position, under an EXPR role so a quote never matches a list.
+        from .syntax import tokenize
+        out = np.zeros(D, complex)
+        for i, t in enumerate(tokenize(v.text)):
+            out = out + bind(_fpe(_W_POS, i), atom(f"tok:{t}"))
+        return bind(atom("EXPR"), out)
     if isinstance(v, (Closure, Ostensive)):
         raise TypeError("functions have no vector encoding")
     raise TypeError(f"cannot encode {type(v).__name__}")

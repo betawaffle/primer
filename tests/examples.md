@@ -355,6 +355,44 @@ BOS EVAL APP LAM MUL V0 V0 INT⟨3⟩ RESULT INT⟨9⟩
     EVAL APP NEW3 INT⟨5⟩ RESULT INT⟨25⟩ END
 ```
 
+## Group 14: quoting
+
+`QUOTE WORD SPAN PART KIND NOUN VERB ADJ FRAME`
+
+Everything so far is *used*: an expression stands for its value. `QUOTE` *mentions* one instead: it is the expression itself, as data. It takes exactly one complete expression, and the arities say where that ends, so no closing token is needed. Equal values, different expressions:
+```
+BOS EQ ADD INT⟨2⟩ INT⟨3⟩ INT⟨5⟩ TRUE
+    EQ QUOTE ADD INT⟨2⟩ INT⟨3⟩ QUOTE INT⟨5⟩ FALSE
+    EQ QUOTE ADD INT⟨2⟩ INT⟨3⟩ QUOTE ADD INT⟨2⟩ INT⟨3⟩ TRUE END
+```
+`QUOTE ADD` alone is incomplete (ADD is owed two arguments). To mention just the word, `WORD` takes exactly one token. `KIND` reads its part of speech off the type table:
+```
+BOS KIND WORD ADD VERB
+    KIND WORD LT ADJ
+    KIND QUOTE INT⟨4⟩ NOUN
+    KIND WORD DEF FRAME
+    KIND QUOTE MAP LAM ADD V0 INT⟨1⟩ [ INT⟨2⟩ ] VERB END
+```
+A defined word is classed by what it is: a function is a verb, a word known from examples (a test) is an adjective:
+```
+BOS DEF NEW1 LAM MUL V0 V0 END KIND WORD NEW1 VERB
+    EX INT⟨4⟩ IS NEW2 KIND WORD NEW2 ADJ END
+```
+`SPAN a b` points back at tokens a to b of this sequence (BOS is 0), so the model can talk about what it already wrote without copying it. The span must be one expression or one token:
+```
+BOS ADD INT⟨2⟩ MUL INT⟨3⟩ INT⟨4⟩ INT⟨14⟩
+    SPAN INT⟨3⟩ INT⟨5⟩ QUOTE MUL INT⟨3⟩ INT⟨4⟩
+    KIND SPAN INT⟨3⟩ INT⟨5⟩ VERB
+    SPAN INT⟨3⟩ INT⟨3⟩ WORD MUL END
+```
+`PART op x` fills in an operator's first argument, giving a function of the rest. It is how a word becomes a predicate to apply or pass around:
+```
+BOS APP PART SUB INT⟨10⟩ INT⟨3⟩ INT⟨7⟩
+    FILTER PART LT INT⟨2⟩ [ INT⟨1⟩ INT⟨5⟩ INT⟨3⟩ ] [ INT⟨5⟩ INT⟨3⟩ ]
+    SAME PART SUB INT⟨10⟩ LAM SUB INT⟨10⟩ V0
+    DIFF PART SUB INT⟨10⟩ LAM SUB V0 INT⟨10⟩ END
+```
+
 ---
 
 ## What generates this
@@ -373,5 +411,6 @@ One generator and checker per group, all ordinary code:
 | 11 | correct definitions with one small slip (a constant, a swapped operator, a dropped or extra wrapper); tests that fail, the patch, tests that pass | interpreter applies the patch and reruns the tests |
 | 12 | programs evaluated piece by piece with occasional caught slips; episodes solved by thinking first, paying for a search only when thinking fails; step counts | interpreter, plus exact step counts |
 | 13 | solved episodes that queue a nearby goal (one constant changed), sometimes taking it up; repeated chunks queued as candidate words, sometimes defined | interpreter; NEXT must take the oldest item |
+| 14 | an expression used and quoted; KIND of random words, programs and defined words; SPAN back into earlier items; PART applied, mapped, filtered and compared with its LAM | interpreter, with the checker telling SPAN where it is |
 
 The curriculum mixes earlier groups back in as later ones are added, so foundations keep getting rehearsed.

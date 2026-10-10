@@ -137,6 +137,12 @@ Added after v0 (ids 171–172). Reasoning traces are written in primer itself: `
 
 Added after v0 (ids 173–174), from Andy's idea: some thoughts aren't steps toward the current goal but are worth coming back to. `QUEUE` writes one down (a goal, or a candidate word, which makes queuing the trigger for library learning) and `NEXT` takes up the oldest. The agenda lives outside the model. A later `FORK` would start an idea in parallel instead of deferring it.
 
+## 14. Quoting (9)
+
+`QUOTE` `WORD` `SPAN` `PART` `KIND` `NOUN` `VERB` `ADJ` `FRAME`
+
+Added after v0 (ids 175–183), from the Concepts side-quest. Many concepts are about expressions rather than values ("is this reasoning?", "is this a verb?"), so the model needs to mention an expression without evaluating it. `QUOTE` mentions one complete expression and `WORD` a single token; `SPAN` points back at earlier tokens instead of copying them; `PART` turns an operator into a one-argument predicate or function; `KIND` reads a word's part of speech off the type table, returning one of the four category symbols.
+
 ## Example
 
 ```

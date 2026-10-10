@@ -8,14 +8,17 @@ AST nodes are tuples:
   ("lit", value) ("var", i) ("word", "NEW3") ("slot", "R0", value|MISSING)
   ("op", name, [args]) ("lam", body) ("let", value, body)
   ("list", [items]) ("rec", [k1, v1, k2, v2, ...]) ("hole",)
+  ("part", "ADD", arg)   PART: an operator with its first argument filled in
+QUOTE x and WORD t parse straight to ("lit", Quote): a quote is already a value.
 """
 import re
 from dataclasses import dataclass
 
-from .values import parse_payload, show
+from .values import Quote, Sym, parse_payload, show
 from .vocab import VOCAB
 
 PAYLOAD_KINDS = {"NUM", "INT", "STR", "TIME", "REC"}
+SPECIAL_FORMS = {"LAM", "LET", "QUOTE", "WORD", "PART"}   # parsed by hand, not by arity
 MISSING = object()
 _TOKEN = re.compile(r"(\w+)[<⟨](.*?)[>⟩]|(\S+)")
 
@@ -118,6 +121,17 @@ class Parser:
             return ("lam", self.expr())
         if n == "LET":
             return ("let", self.expr(), self.expr())
+        if n == "QUOTE":   # exactly one complete expression: arities say where it ends
+            return ("lit", Quote(unparse(self.expr()), True))
+        if n == "WORD":    # exactly one token, arguments or not
+            return ("lit", quote(str(self.next())))
+        if n == "PART":
+            o = self.next()
+            if o.name in SPECIAL_FORMS or VOCAB[o.name].arity < 2:
+                raise SyntaxErr(f"PART needs an operator with two or more arguments, got {o}")
+            return ("part", o.name, self.expr())
+        if tok.ret == "SYM" and not tok.args:
+            return ("lit", Sym(n))
         if tok.args:  # an operator: fixed arity from the type table
             return ("op", n, [self.expr() for _ in range(tok.arity)])
         raise SyntaxErr(f"{t} cannot start an expression")
@@ -129,6 +143,19 @@ def parse_expr(text):
     if p.peek() is not None:
         raise SyntaxErr(f"trailing tokens from {p.peek()}")
     return e
+
+
+def quote(text):
+    """The Quote value for a run of tokens: one complete expression, or a single
+    token. Raises SyntaxErr for anything else."""
+    toks = tokenize(text)
+    if len(toks) == 1:
+        try:
+            node = Parser(toks).expr()
+        except SyntaxErr:
+            return Quote(str(toks[0]), False)   # an operator or frame token on its own
+        return Quote(unparse(node), True)
+    return Quote(unparse(parse_expr(text)), True)
 
 
 def is_literal(node):
@@ -164,4 +191,6 @@ def unparse(node):
         return " ".join(["{", *map(unparse, node[1]), "}"])
     if tag == "op":
         return " ".join([node[1], *map(unparse, node[2])])
+    if tag == "part":
+        return f"PART {node[1]} {unparse(node[2])}"
     raise ValueError(node)

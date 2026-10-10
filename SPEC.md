@@ -1,6 +1,6 @@
 # primer language spec (v0)
 
-Covers vocabulary groups 1–6 (syntax, logic, values, computation, teaching frames and episodes) group 10 (beliefs), group 11 (edits), group 12 (thinking) and group 13 (agenda). Groups 7–9 are reserved for the Lab v0 actions and schema fields, which come later.
+Covers vocabulary groups 1–6 (syntax, logic, values, computation, teaching frames and episodes) group 10 (beliefs), group 11 (edits), group 12 (thinking), group 13 (agenda) and group 14 (quoting). Groups 7–9 are reserved for the Lab v0 actions and schema fields, which come later.
 
 ## Source of truth
 
@@ -35,6 +35,8 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 | NONE | missing value (e.g. a missing record field) |
 | FUN | a function, made by `LAM` |
 | VEC | a raw vector, from `BIND` / `UNBIND` / `BUNDLE` |
+| EXPR | an expression (or one token) held as data: `QUOTE`, `WORD`, `SPAN` |
+| SYM | a symbol used as a value: `NOUN`, `VERB`, `ADJ`, `FRAME` |
 | ERR | the result of anything that fails |
 
 ## Evaluation
@@ -100,6 +102,19 @@ A thought is an `EVAL … RESULT` the model writes before acting: free, unlike a
 
 The agenda is a first-in, first-out list of side ideas: goals that aren't steps toward the current one, and chunks worth making into words. Within a sequence the checker keeps it; across sequences the harness does (on disk, not in the weights), and `check(text, agenda=[("goal" | "word", text), …])` checks a sequence that starts with `NEXT` against what was queued before. Whether an idea was worth queuing can't be checked inside a sequence; it is scored later, by how much solving it teaches (the learning-progress bandit), which is how the model learns which ideas to write down.
 
+## Quoting
+
+Every other expression is *used*: it stands for its value. A quote *mentions* one, so the model can say things about expressions: what kind of word this is, whether two expressions are the same text, and later whether a stretch of work is reasoning.
+
+- `QUOTE x` takes exactly **one complete expression**, never evaluated. Fixed arities say where it ends: `QUOTE ADD INT<2> INT<3>` is three tokens after `QUOTE`, and `QUOTE ADD` alone is a syntax error because `ADD` is owed two arguments.
+- `WORD t` takes exactly **one token**, whatever its arity: `WORD ADD` is the word itself. A token that is already a complete expression has one canonical form, `QUOTE`: `WORD TRUE` prints as `QUOTE TRUE`.
+- `SPAN a b` is tokens a to b (inclusive) of the current sequence as a quote, counting `BOS` as 0, after any `HOLE` is filled. It may only point at tokens before the item it is in, and the span must be one complete expression or one token, otherwise `ERR`. Outside a checked sequence it is always `ERR`.
+- Two quotes are equal when their text is (literals in canonical form). A quote never equals the value of the expression it holds.
+- `KIND q` is the part of speech of the token heading q, from the type table: values, slots, variables, lists and records are `NOUN`; operators are `VERB`, except tests (they return `BOOL` from arguments that aren't all `BOOL`, e.g. `LT`, `EQ`), which are `ADJ`; connectives like `AND` are `VERB`; everything else (syntax, teaching and episode tokens) is `FRAME`. A `NEW` word is classed by what it is now: a function is a `VERB`, a word known from examples an `ADJ`, otherwise a `NOUN`.
+- Vectors: a quote is the bundle of position ⊛ token atom, bound to an `EXPR` role; a symbol is its own atom.
+
+`PART op x` is partial application: op with its first argument filled in, as a curried function of the rest (`PART SUB x` behaves as `LAM SUB x V0`; `PART IF c` as `LAM LAM IF c V1 V0`). op must be an operator with two or more arguments; x is evaluated once, when `PART` is.
+
 ## Serialization
 
 - **Text** as above; parse → print → parse is stable.
@@ -122,6 +137,7 @@ The agenda is a first-in, first-out list of side ideas: goals that aren't steps 
 | 11 | repairs: a definition with one small slip, tests that fail, the `PATCH`, tests that pass (sometimes with the fix as a hole); plain edits followed by `EXPAND` |
 | 12 | programs evaluated piece by piece, bottom-up, with an occasional slip caught by `OOPS`; episodes solved by thinking first and acting once, paying for a search (often after its `COST`) only when thinking fails; `COST` items for random programs |
 | 13 | solved episodes that queue a nearby goal (one constant changed), mid-task or after, sometimes taking it up with `NEXT`; a chunk used repeatedly while working, queued as a candidate word and sometimes defined |
+| 14 | an expression used and quoted (equal values, different quotes); `KIND` of random words, programs and freshly defined or example-defined words; `SPAN` back at part of an earlier expression, copied, classed or compared; `PART` applied, mapped, filtered, and checked `SAME` as its `LAM` (and `DIFF` from the flipped one) |
 
 Every answer is computed by the interpreter, so a generator can choose a bad question but never a wrong answer, and every sequence is run through the checker again before it is written. No sequence appears twice in a run, across all shards; the run tops itself up to the requested count. Random programs keep to what a person would write: every `LET` and every function body uses the variable it binds and isn't just that variable, and `IF` never tests a constant. Words are assigned random `NEW` numbers per sequence so no number gets a fixed meaning.
 
