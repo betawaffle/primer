@@ -51,7 +51,7 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 
 `primer/vsa.py` (FHRR, D = 2048 complex). Every value except functions has an encoding: STR is a hash-seeded atom, NUM a sign atom bound to a fractional power of log2|x| (similar within about a quarter octave), INT a residue code over the first 16 primes (exact up to ~3.26e19), TIME a four-rhythm clock, REC the bundle of key ⊛ value, LIST the bundle of position ⊛ item.
 
-`CLEAN v` snaps a vector to the best match among TRUE, FALSE, NONE and every value that appears anywhere in the current sequence (including inside records and lists), then tries the NUM and INT decoders for numbers that never appeared. Below similarity 0.15 the result is `ERR`.
+`CLEAN v` snaps a vector to the best match among TRUE, FALSE, NONE and every value the sequence has shown *so far* (including inside records and lists, and earlier answers), but never the answer it is being checked against. It then tries the NUM and INT decoders for numbers that never appeared. Below similarity 0.15 the result is `ERR`.
 
 `ENCODER_VERSION` changes whenever an encoding changes; serialized data records it.
 
@@ -77,3 +77,18 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 - **Text** as above; parse → print → parse is stable.
 - **Ids** (`primer/serialize.py`): token ids plus a side table of `(position, payload)`, and the encoder version. Vectors are recomputed, never stored.
 - **Canonical bytes:** payloads normalized (`NUM<2.0>` = `NUM<2>`) so equal sequences hash equal.
+
+## Generators
+
+`python3 -m primer.gen` writes JSON-lines shards of checked training data (see `primer/gen/groups.py`):
+
+| Group | What it generates |
+|---|---|
+| 1 | random bracket shapes, some with a hole, some padded |
+| 2 | random boolean expressions with their values; holes |
+| 3 | comparisons of every value kind, records vs. their spelled-out form, lists, slots |
+| 4 | random well-typed programs (INT, NUM, BOOL, STR, lists of INT) with their values; vector-algebra items; holes as program synthesis |
+| 5 | `EVAL`/`RESULT`; definitions with uses and `EXPAND`; words learned from examples with `ASK`; `SAME`/`DIFF` from algebraic rewrites or unrelated functions |
+| 6 | episodes with a goal predicate and a budget, solved by filtering, by probing candidates, or with failed actions and wrong answers |
+
+Every answer is computed by the interpreter, so a generator can choose a bad question but never a wrong answer, and every sequence is run through the checker again before it is written. Words are assigned random `NEW` numbers per sequence so no number gets a fixed meaning.

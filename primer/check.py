@@ -178,10 +178,6 @@ def check(text, truth=None):
     rep.items = len(items)
 
     ctx = Context()
-    for it in items:
-        for part in it[1:]:
-            if isinstance(part, tuple):
-                remember_literals(part, ctx)
 
     defs, deferred, links = {}, [], {}
     ep = {"goal": None, "budget": None, "pending": None}
@@ -195,6 +191,12 @@ def check(text, truth=None):
     for idx, it in enumerate(items):
         tag = it[0]
         where = f"item {idx + 1} ({tag})"
+        # CLEAN may snap to any value the sequence has shown so far, but never
+        # to the answer it is being checked against.
+        answer = it[2] if tag in ("implicit", "eval") else None
+        for part in it[1:]:
+            if isinstance(part, tuple) and part is not answer:
+                remember_literals(part, ctx)
 
         if tag in ("implicit", "eval") and not (tag == "eval" and it[2] is None):
             expr, expected = it[1], it[2]
@@ -209,6 +211,7 @@ def check(text, truth=None):
             want = value_of(expected)
             if not valeq(got, want):
                 err(f"{where}: {unparse(expr)} gives {show(got)}, sequence says {show(want)}")
+            remember_literals(expected, ctx)
 
         elif tag == "eval":   # EVAL with no RESULT only makes sense as an action
             err(f"{where}: EVAL needs RESULT outside ACT")

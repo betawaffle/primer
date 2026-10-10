@@ -85,13 +85,15 @@ def enc_int(n):
     return bind(atom("int"), _rns(n))
 
 
+_RNS_CANDIDATES = [np.exp(2j * np.pi * np.outer(np.arange(p), k) / p) for p, k in zip(PRIMES, _K)]
+
+
 def dec_int(v):
     """Best exact integer for a vector, and its similarity to that integer's encoding."""
     r = unbind(v, atom("int"))
     n = 0
-    for i, (p, k) in enumerate(zip(PRIMES, _K)):
-        blk = r[i * _BLK:(i + 1) * _BLK]
-        res = max(range(p), key=lambda x: np.real(np.vdot(np.exp(2j * np.pi * k * x / p), blk)))
+    for i, (p, cands) in enumerate(zip(PRIMES, _RNS_CANDIDATES)):
+        res = int(np.argmax(np.real(cands.conj() @ r[i * _BLK:(i + 1) * _BLK])))
         m = RNS_MOD // p
         n += res * m * pow(m, -1, p)
     n %= RNS_MOD
@@ -100,21 +102,25 @@ def dec_int(v):
     return n, sim(v, enc_int(n))
 
 
-_GRID = np.arange(-40, 40, 0.01)
-_GRID_VECS = None
+_COARSE = np.arange(-40, 40, 0.1)
+_FINE = np.arange(-0.1, 0.1, 0.001)
+_COARSE_VECS = _FINE_VECS = None
 
 
 def dec_num(v):
-    """Best positive or negative number for a vector (grid search on log2|x|), with its similarity."""
-    global _GRID_VECS
-    if _GRID_VECS is None:
-        _GRID_VECS = np.exp(1j * np.outer(_GRID, _W_NUM))
+    """Best positive or negative number for a vector, with its similarity.
+    Coarse grid on log2|x| (0.1 steps), then a fine search around the best."""
+    global _COARSE_VECS, _FINE_VECS
+    if _COARSE_VECS is None:
+        _COARSE_VECS = np.exp(-1j * np.outer(_COARSE, _W_NUM))
+        _FINE_VECS = np.exp(-1j * np.outer(_FINE, _W_NUM))
     best = (0.0, -1.0)
     for sign in "+-":
         q = unbind(v, atom("num:" + sign))
-        scores = np.real(_GRID_VECS.conj() @ q)
-        i = int(np.argmax(scores))
-        x = (2 ** _GRID[i]) * (1 if sign == "+" else -1)
+        g = _COARSE[int(np.argmax(np.real(_COARSE_VECS @ q)))]
+        # shift q so the coarse guess sits at 0, then search offsets around it
+        g += _FINE[int(np.argmax(np.real(_FINE_VECS @ (q * np.exp(-1j * _W_NUM * g)))))]
+        x = float(2 ** g) * (1 if sign == "+" else -1)
         s = sim(v, enc_num(x))
         if s > best[1]:
             best = (x, s)
@@ -123,14 +129,6 @@ def dec_num(v):
 
 _EPOCH = dt.datetime(1970, 1, 1)
 _TB = D // 4
-_W_TIME = [  # absolute (~10 days), weekly, yearly, daily rhythms
-    _rng("freq:t:abs").uniform(-np.pi, np.pi, _TB) / 10,
-    2 * np.pi * _rng("freq:t:week").choice([-2, -1, 1, 2], _TB) / 7,
-    2 * np.pi * _rng("freq:t:year").choice([-1, 1], _TB) / 365.2425,
-    2 * np.pi * _rng("freq:t:day").choice([-3, -2, -1, 1, 2, 3], _TB),
-]
-
-
 def enc_time(t):
     days = (t - _EPOCH).total_seconds() / 86400
     return bind(atom("time"), np.concatenate([_fpe(w, days) for w in _W_TIME]))
