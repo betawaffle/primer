@@ -108,3 +108,17 @@ Inside `PATCH word … END`, each edit is `REPLACE old new` (the subexpression o
 | 11 | repairs: a definition with one small slip, tests that fail, the `PATCH`, tests that pass (sometimes with the fix as a hole); plain edits followed by `EXPAND` |
 
 Every answer is computed by the interpreter, so a generator can choose a bad question but never a wrong answer, and every sequence is run through the checker again before it is written. Words are assigned random `NEW` numbers per sequence so no number gets a fixed meaning.
+
+## Held-out split
+
+`primer/split.py` names combinations that training data never contains, each made of pieces training does show separately:
+
+| Rule | Held out | Training still has |
+|---|---|---|
+| `fold_in_map` | a `FOLD` inside the function given to `MAP` | `FOLD` and `MAP`, never nested that way |
+| `deep` | an expression 8 or more operators deep | programs up to depth 7 or so |
+| `bet_on_word` | a `BET` on a word defined in the sequence | bets on spelled-out predicates; words used everywhere else |
+| `wrap_at` | a `WRAP` that needs `AT` | `WRAP`, and `AT` with `REPLACE` |
+
+`python3 -m primer.gen` writes the training split by default, dropping any sequence that matches a rule. `--split test` writes only matching sequences, from a generator aimed at each rule (`primer/gen/heldout.py`), and adds `"heldout": [rule names]` to each row. `--split all` ignores the split. The two splits are disjoint by construction, and test-split accuracy measures composition rather than recall.
+

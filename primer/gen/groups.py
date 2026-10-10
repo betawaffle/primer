@@ -464,12 +464,12 @@ def _chance(r, pred, xs):
     return p
 
 
-def group10(r):
+def group10(r, bet_on_word=None):
     """Chances and bets the interpreter can work out exactly: what fraction of
     a list passes a predicate, then bets on random draws from it, the outcome,
     and how surprising the outcome was."""
     roll = r.random()
-    if roll < 0.3:
+    if roll < 0.3 and not bet_on_word:
         items = []
         for _ in range(r.randint(1, 2)):
             pred, xs = _int_pred(r), _draw_list(r)
@@ -480,7 +480,7 @@ def group10(r):
     ctx = Context(fuel=20_000)
     pred, parts = _int_pred(r), []
     name = None
-    if r.random() < 0.3:   # name the predicate first, then bet on the word
+    if bet_on_word if bet_on_word is not None else r.random() < 0.3:   # name the predicate, bet on the word
         name = f"NEW{r.randrange(16)}"
         parts.append(f"DEF {name} {unparse(pred)} END")
         ctx.words[name] = _eval_fun(pred, ctx, name)

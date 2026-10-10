@@ -189,6 +189,29 @@ def compare_functions(f, g, ctx):
     return agree, None
 
 
+def sequence_items(text):
+    """Parse a whole sequence into items, with any HOLE already filled in."""
+    toks = tokenize(text)
+    while toks and toks[-1].name == "PAD":
+        toks.pop()
+    if not toks or toks[0].name != "BOS" or toks[-1].name != "END":
+        raise SyntaxErr("a sequence is BOS ... END")
+    holes = [i for i, t in enumerate(toks) if t.name == "HOLE"]
+    if holes:
+        if len(holes) > 1:
+            raise SyntaxErr("only one HOLE per sequence")
+        ends = [i for i, t in enumerate(toks) if t.name == "END"]
+        if len(ends) < 2:
+            raise SyntaxErr("a HOLE needs a filler: ... END filler END")
+        pen = ends[-2]
+        filler, main = toks[pen + 1:-1], toks[:pen + 1]
+        if not filler:
+            raise SyntaxErr("empty filler")
+        h = holes[0]
+        toks = main[:h] + filler + main[h + 1:]
+    return parse_items(toks[1:-1])
+
+
 def _bits(p, outcome):
     q = p if outcome else 1 - p
     return -math.log2(q) if q > 0 else math.inf
@@ -204,25 +227,7 @@ def check(text, truth=None, bets="exact"):
     probability and only scores it: see Report.scores."""
     rep = Report(text)
     try:
-        toks = tokenize(text)
-        while toks and toks[-1].name == "PAD":
-            toks.pop()
-        if not toks or toks[0].name != "BOS" or toks[-1].name != "END":
-            raise SyntaxErr("a sequence is BOS ... END")
-        holes = [i for i, t in enumerate(toks) if t.name == "HOLE"]
-        if holes:
-            if len(holes) > 1:
-                raise SyntaxErr("only one HOLE per sequence")
-            ends = [i for i, t in enumerate(toks) if t.name == "END"]
-            if len(ends) < 2:
-                raise SyntaxErr("a HOLE needs a filler: ... END filler END")
-            pen = ends[-2]
-            filler, main = toks[pen + 1:-1], toks[:pen + 1]
-            if not filler:
-                raise SyntaxErr("empty filler")
-            h = holes[0]
-            toks = main[:h] + filler + main[h + 1:]
-        items = parse_items(toks[1:-1])
+        items = sequence_items(text)
     except SyntaxErr as e:
         rep.errors.append(f"syntax: {e}")
         return rep
