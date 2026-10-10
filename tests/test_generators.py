@@ -8,7 +8,8 @@ from pathlib import Path
 from primer.check import check
 from primer.serialize import digest
 from primer.gen import GROUPS, generate
-from primer.gen.__main__ import main
+from primer.gen.__main__ import main, parse_groups
+from primer.vocab import VOCAB
 from primer.gen.heldout import TEST_GENERATORS, generate_test
 from primer.split import heldout
 
@@ -18,7 +19,7 @@ class TestGenerators(unittest.TestCase):
 
     def test_every_group_checks(self):
         for g in GROUPS:
-            r = random.Random(1000 + g)
+            r = random.Random(1000 + len(g))
             texts = set()
             for _ in range(self.N):
                 text, truth = generate(r, g)
@@ -58,10 +59,14 @@ class TestGenerators(unittest.TestCase):
 
     def test_cli_has_no_repeats_across_shards(self):
         with tempfile.TemporaryDirectory() as d:
-            main(["--groups", "2", "--count", "300", "--shard-size", "30", "--workers", "2", "--out", d])
+            main(["--groups", "logic", "--count", "300", "--shard-size", "30", "--workers", "2", "--out", d])
             texts = [json.loads(line)["text"] for p in Path(d).glob("*.jsonl") for line in p.read_text().splitlines()]
             self.assertEqual(len(texts), 300)
             self.assertEqual(len({digest(t) for t in texts}), 300)
+
+    def test_groups_match_the_vocabulary(self):
+        self.assertEqual(list(GROUPS), list(VOCAB.groups))
+        self.assertEqual(parse_groups("logic-compute,agenda"), ["logic", "values", "compute", "agenda"])
 
     def test_deterministic(self):
         a = [generate(random.Random(5), g) for g in GROUPS]

@@ -8,7 +8,7 @@ from pathlib import Path
 class Token:
     id: int
     name: str
-    group: int
+    group: str
     args: tuple = ()
     ret: str = ""
     vsa: str = "atom"
@@ -23,6 +23,7 @@ class Token:
 
 @dataclass
 class Vocab:
+    groups: dict = field(default_factory=dict)   # name -> what it covers, in bootstrap order
     tokens: list = field(default_factory=list)
     by_name: dict = field(default_factory=dict)
     by_id: dict = field(default_factory=dict)
@@ -31,7 +32,11 @@ class Vocab:
     def load(cls, path=Path(__file__).with_name("vocab.toml")):
         v = cls()
         seen = set()
-        for row in tomllib.loads(Path(path).read_text())["token"]:
+        table = tomllib.loads(Path(path).read_text())
+        v.groups = {g["name"]: g["about"] for g in table["group"]}
+        for row in table["token"]:
+            if row["group"] not in v.groups:
+                raise ValueError(f'{row["name"]}: unknown group {row["group"]!r}')
             count = row.get("count")
             names = [f'{row["name"]}{i}' for i in range(count)] if count else [row["name"]]
             for i, name in enumerate(names):

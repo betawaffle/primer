@@ -1,6 +1,6 @@
 """Write generated training data as JSON-lines shards.
 
-    python3 -m primer.gen --groups 1-6,10-14 --count 100000 --out data/ --workers 16
+    python3 -m primer.gen --groups syntax-episode,belief --count 100000 --out data/ --workers 16
 
 Each line: {"group", "text", "truth", "encoder", "ids", "payloads"}, plus
 "heldout" (the rules it matches) in the test split. --split train (the
@@ -26,15 +26,24 @@ from ..split import RULES, heldout
 from .groups import GROUPS, generate
 from .heldout import generate_test
 
-DEFAULT_WEIGHTS = {1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 3, 10: 3, 11: 4, 12: 4, 13: 2, 14: 3}
+DEFAULT_WEIGHTS = {"syntax": 1, "logic": 2, "values": 2, "compute": 4, "teach": 4, "quote": 3, "edit": 4,
+                   "episode": 3, "think": 4, "belief": 3, "agenda": 2}
 
 
 def parse_groups(spec):
-    out = []
+    """Group names, comma-separated; a-b is every group from a to b in bootstrap
+    order; all is every group."""
+    names, out = list(GROUPS), []
     for part in spec.split(","):
         lo, _, hi = part.partition("-")
-        out.extend(range(int(lo), int(hi or lo) + 1))
-    return [g for g in out if g in GROUPS]
+        if lo == "all":
+            out.extend(names)
+            continue
+        for g in filter(None, (lo, hi)):
+            if g not in GROUPS:
+                raise SystemExit(f"unknown group {g!r}; groups are {', '.join(names)}")
+        out.extend(names[names.index(lo):names.index(hi or lo) + 1])
+    return list(dict.fromkeys(out))
 
 
 def _work(args):
@@ -87,11 +96,11 @@ def _dedupe(path, order, seen):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python3 -m primer.gen", description=__doc__.split("\n\n")[0])
-    ap.add_argument("--groups", default="1-6,10-14", help="e.g. 1-6,10-14 or 2,4,5")
+    ap.add_argument("--groups", default="all", help="e.g. all, syntax-teach, or logic,compute")
     ap.add_argument("--count", type=int, default=1000, help="sequences in total")
     ap.add_argument("--shard-size", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--weights", default="", help="e.g. 4:4,5:4 (others keep defaults)")
+    ap.add_argument("--weights", default="", help="e.g. compute:4,teach:2 (others keep defaults)")
     ap.add_argument("--workers", type=int, default=mp.cpu_count())
     ap.add_argument("--no-check", action="store_true")
     ap.add_argument("--split", choices=["train", "test", "all"], default="train",
@@ -103,7 +112,7 @@ def main(argv=None):
     weights = dict(DEFAULT_WEIGHTS)
     for part in filter(None, a.weights.split(",")):
         g, w = part.split(":")
-        weights[int(g)] = float(w)
+        weights[g] = float(w)
     Path(a.out).mkdir(parents=True, exist_ok=True)
     job = lambda i, seed, n: (i, seed, n, groups, weights, not a.no_check, a.out, a.split)
     n_shards = (a.count + a.shard_size - 1) // a.shard_size

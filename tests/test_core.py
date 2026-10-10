@@ -137,7 +137,9 @@ class TestCore(unittest.TestCase):
     def test_ids_are_unique_and_stable(self):
         ids = [t.id for t in VOCAB.tokens]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual((VOCAB["BOS"].id, VOCAB["R0"].id, VOCAB["R63"].id, VOCAB["CHANCE"].id, VOCAB["COST"].id), (0, 25, 88, 163, 172))  # pinned: ids must never change
+        self.assertEqual(sorted(ids), list(range(len(ids))))             # no gaps
+        pinned = {"BOS": 0, "R0": 25, "LAM": 89, "EVAL": 129, "CHANCE": 178}   # ids must never change
+        self.assertEqual({k: VOCAB[k].id for k in pinned}, pinned)
 
 
 if __name__ == "__main__":
