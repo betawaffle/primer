@@ -6,6 +6,8 @@ types (innermost last), so de Bruijn indices are always in scope and typed.
 Programs can still fail at run time (an index out of range, a divide by
 zero); callers evaluate them and resample when the result is ERR.
 """
+from ..edit import replace, subtrees  # noqa: F401  (re-exported for generators)
+
 INT_RANGE = (-9, 20)
 
 
@@ -145,46 +147,6 @@ def size_ok(v, max_list=12, max_int=10**6):
     if isinstance(v, dict):
         return len(v) <= 8 and all(size_ok(x) for x in v.values())
     return False
-
-
-def subtrees(node, path=()):
-    """Yield (path, node) for every subexpression."""
-    yield path, node
-    tag = node[0]
-    if tag == "op":
-        for i, a in enumerate(node[2]):
-            yield from subtrees(a, path + (2, i))
-    elif tag in ("list", "rec"):
-        for i, a in enumerate(node[1]):
-            yield from subtrees(a, path + (1, i))
-    elif tag == "lam":
-        yield from subtrees(node[1], path + (1,))
-    elif tag == "let":
-        yield from subtrees(node[1], path + (1,))
-        yield from subtrees(node[2], path + (2,))
-
-
-def replace(node, path, new):
-    if not path:
-        return new
-    k, rest = path[0], path[1:]
-    if node[0] in ("op",) and k == 2:
-        i, rest = rest[0], rest[1:]
-        args = list(node[2])
-        args[i] = replace(args[i], rest, new)
-        return ("op", node[1], args)
-    if node[0] in ("list", "rec") and k == 1:
-        i, rest = rest[0], rest[1:]
-        items = list(node[1])
-        items[i] = replace(items[i], rest, new)
-        return (node[0], items)
-    if node[0] == "lam":
-        return ("lam", replace(node[1], rest, new))
-    if node[0] == "let":
-        parts = list(node)
-        parts[k] = replace(node[k], rest, new)
-        return tuple(parts)
-    raise ValueError(path)
 
 
 def substitute(node, value, depth=0):

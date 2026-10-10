@@ -15,11 +15,13 @@ Items:
   GOAL pred | BUDGET n | ACT EVAL expr | ACT DONE x | OBS value | OK | ERR
   BET p pred list  DRAW x  YES|NO  [SURPRISE s]
   BET p ACT ...    (the action's outcome settles the bet)  [SURPRISE s]
+  PATCH word [AT k] REPLACE old new | [AT k] WRAP old OP args... ... END
 """
 import itertools
 import math
 from dataclasses import dataclass, field
 
+from .edit import EditErr, apply_edit
 from .interp import Context, apply, evaluate, remember_literals
 from .syntax import Parser, SyntaxErr, is_literal, parse_expr, tokenize, unparse
 from .values import ERR, Closure, Ostensive, kind, show, valeq
@@ -109,6 +111,28 @@ def parse_items(toks):
         elif n in ("DRAW", "SURPRISE"):
             p.next()
             items.append((n.lower(), p.expr()))
+        elif n == "PATCH":
+            p.next()
+            w, edits = _word(p), []
+            while not p.at("END"):
+                at = None
+                if p.at("AT"):
+                    p.next()
+                    at = p.expr()
+                e = p.next().name
+                if e == "REPLACE":
+                    edits.append(("replace", at, p.expr(), p.expr()))
+                elif e == "WRAP":
+                    old, o = p.expr(), p.next().name
+                    if not VOCAB[o].args or o in ("LAM", "LET"):
+                        raise SyntaxErr(f"WRAP needs an operator, got {o}")
+                    edits.append(("wrap", at, old, o, [p.expr() for _ in range(VOCAB[o].arity - 1)]))
+                else:
+                    raise SyntaxErr(f"expected REPLACE, WRAP or AT in PATCH, got {e}")
+            p.next()
+            if not edits:
+                raise SyntaxErr("PATCH needs at least one edit")
+            items.append(("patch", w, edits))
         elif n in ("YES", "NO"):
             p.next()
             items.append(("outcome", n == "YES"))
@@ -264,6 +288,29 @@ def check(text, truth=None, bets="exact"):
                 v.name = w
             if isinstance(ctx.words.get(w), Ostensive):
                 links[w] = v
+            ctx.words[w], defs[w] = v, body
+
+        elif tag == "patch":
+            _, w, edits = it
+            if w not in defs:
+                err(f"{where}: {w} was never defined")
+                continue
+            body = defs[w]
+            try:
+                for e in edits:
+                    at = None if e[1] is None else value_of(e[1])
+                    if at is not None and kind(at) != "INT":
+                        raise EditErr("AT needs an INT")
+                    body = apply_edit(body, (e[0], at, *e[2:]))
+            except EditErr as x:
+                err(f"{where}: {x}")
+                continue
+            v = value_of(body)
+            if v is ERR:
+                err(f"{where}: the patched definition of {w} does not evaluate")
+                continue
+            if isinstance(v, Closure):
+                v.name = w
             ctx.words[w], defs[w] = v, body
 
         elif tag == "expand":

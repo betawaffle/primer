@@ -276,6 +276,39 @@ BOS BET HOLE LAM EQ INT⟨0⟩ SUB V0 MUL INT⟨3⟩ DIV V0 INT⟨3⟩ RANGE INT
 ```
 A bet can also come right before an action in an episode (`BET p ACT …`); the action's outcome settles it. Generated data doesn't contain these yet, because only the model can say how sure it is: the checker scores them (`check(text, bets="score")` puts the surprise of every settled bet in `Report.scores`) instead of checking them.
 
+## Group 11: edits
+
+`PATCH AT REPLACE WRAP`
+
+A definition that fails its tests, a patch, and the tests passing:
+```
+BOS DEF NEW3 LAM ADD V0 INT⟨2⟩ END
+    EQ MAP NEW3 [ INT⟨1⟩ INT⟨2⟩ ] [ INT⟨4⟩ INT⟨5⟩ ] FALSE
+    PATCH NEW3 REPLACE INT⟨2⟩ INT⟨3⟩ END
+    EQ MAP NEW3 [ INT⟨1⟩ INT⟨2⟩ ] [ INT⟨4⟩ INT⟨5⟩ ] TRUE END
+```
+`WRAP` puts an operator around a subexpression, which becomes its first argument:
+```
+BOS DEF NEW3 LAM ADD V0 INT⟨2⟩ END
+    PATCH NEW3 WRAP V0 MUL INT⟨2⟩ END
+    EXPAND NEW3 RESULT LAM ADD MUL V0 INT⟨2⟩ INT⟨2⟩ END
+```
+When the target occurs more than once, `AT` says which occurrence (counting from 0, in reading order). Several edits can share one `PATCH`:
+```
+BOS DEF NEW0 LAM ADD V0 V0 END
+    PATCH NEW0 AT INT⟨1⟩ WRAP V0 NEG END
+    EVAL APP NEW0 INT⟨5⟩ RESULT INT⟨0⟩
+    PATCH NEW0 REPLACE NEG V0 INT⟨1⟩ REPLACE ADD V0 INT⟨1⟩ MUL V0 INT⟨2⟩ END
+    EXPAND NEW0 RESULT LAM MUL V0 INT⟨2⟩ END
+```
+Synthesizing the fix: any filler that makes the tests pass is correct.
+```
+BOS DEF NEW1 LAM MUL V0 INT⟨3⟩ END
+    EQ MAP NEW1 [ INT⟨1⟩ INT⟨2⟩ ] [ INT⟨2⟩ INT⟨4⟩ ] FALSE
+    PATCH NEW1 REPLACE INT⟨3⟩ HOLE END
+    EQ MAP NEW1 [ INT⟨1⟩ INT⟨2⟩ ] [ INT⟨2⟩ INT⟨4⟩ ] TRUE END INT⟨2⟩ END
+```
+
 ---
 
 ## What generates this
@@ -291,5 +324,6 @@ One generator and checker per group, all ordinary code:
 | 5 | random definitions, uses, example sets drawn from a library of predicates | interpreter, plus equivalence testing on random inputs for `SAME` |
 | 6 | random goals (predicates with a known witness); scripted policies of varying quality for the first trajectories | interpreter; reward = OK within budget |
 | 10 | random predicates and lists; exact chances, bets on random draws | interpreter, plus the exact chance and surprise for each bet |
+| 11 | correct definitions with one small slip (a constant, a swapped operator, a dropped or extra wrapper); tests that fail, the patch, tests that pass | interpreter applies the patch and reruns the tests |
 
 The curriculum mixes earlier groups back in as later ones are added, so foundations keep getting rehearsed.
