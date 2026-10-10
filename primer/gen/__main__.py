@@ -2,7 +2,10 @@
 
     python3 -m primer.gen --groups 1-6,10-11 --count 100000 --out data/ --workers 16
 
-Each line: {"group", "text", "truth", "encoder", "ids", "payloads"}. Every
+Each line: {"group", "text", "truth", "encoder", "ids", "payloads"}, plus
+"heldout" (the rules it matches) in the test split. --split train (the
+default) leaves out every sequence matching a held-out rule; --split test
+writes only such sequences (see primer/split.py). Every
 sequence is run through the checker before it is written, and repeats
 within a shard are skipped (disable with
 --no-check for speed once a generator is trusted); failures are dropped and
@@ -19,7 +22,9 @@ from pathlib import Path
 
 from ..check import check
 from ..serialize import digest, to_ids
+from ..split import RULES, heldout
 from .groups import GROUPS, generate
+from .heldout import generate_test
 
 DEFAULT_WEIGHTS = {1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 3, 10: 3, 11: 4}
 
@@ -33,15 +38,24 @@ def parse_groups(spec):
 
 
 def _work(args):
-    shard, seed, n, groups, weights, do_check, out = args
+    shard, seed, n, groups, weights, do_check, out, split = args
     r = random.Random(seed)
-    stats = {"written": 0, "rejected": 0, "duplicates": 0}
+    stats = {"written": 0, "rejected": 0, "duplicates": 0, "held out": 0}
     seen = set()
     path = Path(out) / f"shard-{shard:05d}.jsonl"
     with path.open("w") as f:
         while stats["written"] < n:
-            g = r.choices(groups, [weights[g] for g in groups])[0]
-            text, truth = generate(r, g)
+            if split == "test":
+                g = r.choice(sorted(RULES))
+                text, truth = generate_test(r, g)
+                extra = {"heldout": heldout(text)}
+            else:
+                g = r.choices(groups, [weights[g] for g in groups])[0]
+                text, truth = generate(r, g)
+                extra = {}
+                if split == "train" and heldout(text):
+                    stats["held out"] += 1
+                    continue
             h = digest(text)
             if h in seen:
                 stats["duplicates"] += 1
@@ -52,7 +66,7 @@ def _work(args):
                 if rep.errors or rep.unverified:
                     stats["rejected"] += 1
                     continue
-            f.write(json.dumps({"group": g, "text": text, "truth": truth, **to_ids(text)}) + "\n")
+            f.write(json.dumps({"group": g, "text": text, "truth": truth, **extra, **to_ids(text)}) + "\n")
             stats["written"] += 1
     return stats
 
@@ -66,6 +80,8 @@ def main(argv=None):
     ap.add_argument("--weights", default="", help="e.g. 4:4,5:4 (others keep defaults)")
     ap.add_argument("--workers", type=int, default=mp.cpu_count())
     ap.add_argument("--no-check", action="store_true")
+    ap.add_argument("--split", choices=["train", "test", "all"], default="train",
+                    help="train leaves out held-out combinations, test is only those, all ignores the split")
     ap.add_argument("--out", default="data")
     a = ap.parse_args(argv)
 
@@ -76,15 +92,16 @@ def main(argv=None):
         weights[int(g)] = float(w)
     Path(a.out).mkdir(parents=True, exist_ok=True)
     shards = [(i, a.seed * 1_000_003 + i, min(a.shard_size, a.count - i * a.shard_size), groups, weights,
-               not a.no_check, a.out) for i in range((a.count + a.shard_size - 1) // a.shard_size)]
-    t0, total = time.time(), {"written": 0, "rejected": 0, "duplicates": 0}
+               not a.no_check, a.out, a.split) for i in range((a.count + a.shard_size - 1) // a.shard_size)]
+    t0, total = time.time(), {"written": 0, "rejected": 0, "duplicates": 0, "held out": 0}
     with mp.Pool(min(a.workers, len(shards))) as pool:
         for s in pool.imap_unordered(_work, shards):
             for k in total:
                 total[k] += s[k]
     dt = time.time() - t0
     print(f"wrote {total['written']} sequences to {a.out}/ in {dt:.1f}s "
-          f"({total['written'] / dt:.0f}/s); rejected {total['rejected']}, duplicates skipped {total['duplicates']}",
+          f"({total['written'] / dt:.0f}/s); rejected {total['rejected']}, duplicates skipped {total['duplicates']}, "
+          f"held out {total['held out']}",
           file=sys.stderr)
 
 
