@@ -125,6 +125,12 @@ Added after v0 (ids 163–166). The model states how likely something is before 
 
 Added after v0 (ids 167–170). Programming is mostly fixing almost-right code, and a short edit is easier to learn and to search over than a whole new program. Targets are matched by text, with `AT` to pick among repeats, so an edit is copyable from the program it changes.
 
+## 12. Thinking (2)
+
+`OOPS` `COST`
+
+Added after v0 (ids 171–172). Reasoning traces are written in primer itself: `EVAL … RESULT` claims made before acting, each one checkable. `OOPS` withdraws a wrong one (no training loss on the wrong value). `COST` is the price of a computation in steps, so the model can learn when to stop thinking and act.
+
 ## Example
 
 ```

@@ -309,6 +309,31 @@ BOS DEF NEW1 LAM MUL V0 INT⟨3⟩ END
     EQ MAP NEW1 [ INT⟨1⟩ INT⟨2⟩ ] [ INT⟨2⟩ INT⟨4⟩ ] TRUE END INT⟨2⟩ END
 ```
 
+## Group 12: thinking
+
+`OOPS COST`
+
+Thinking is writing claims down before acting. Each `EVAL … RESULT` is a thought the checker grades. Showing the work on `ADD MUL 6 7 3`, with a slip caught along the way:
+```
+BOS EVAL MUL INT⟨6⟩ INT⟨7⟩ RESULT INT⟨48⟩ OOPS
+    EVAL MUL INT⟨6⟩ INT⟨7⟩ RESULT INT⟨42⟩
+    EVAL ADD MUL INT⟨6⟩ INT⟨7⟩ INT⟨3⟩ RESULT INT⟨45⟩ END
+```
+`OOPS` must follow a thought that really is wrong. Training puts no loss on the withdrawn value (`check.retracted_spans`), so the model learns to notice slips without learning to make them.
+
+Thinking is free and acting costs budget, so try candidates in your head and act once:
+```
+BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩ BUDGET INT⟨1⟩
+    EVAL EQ MUL INT⟨6⟩ INT⟨6⟩ INT⟨49⟩ RESULT FALSE
+    EVAL EQ MUL INT⟨7⟩ INT⟨7⟩ INT⟨49⟩ RESULT TRUE
+    ACT DONE INT⟨7⟩ OK END
+```
+`COST e n` says evaluating e takes n interpreter steps, so the model can tell when thinking is getting expensive and paying for an action is cheaper:
+```
+BOS COST ADD INT⟨1⟩ INT⟨2⟩ INT⟨3⟩
+    COST FILTER LAM GT V0 INT⟨3⟩ RANGE INT⟨10⟩ INT⟨44⟩ END
+```
+
 ---
 
 ## What generates this
@@ -325,5 +350,6 @@ One generator and checker per group, all ordinary code:
 | 6 | random goals (predicates with a known witness); scripted policies of varying quality for the first trajectories | interpreter; reward = OK within budget |
 | 10 | random predicates and lists; exact chances, bets on random draws | interpreter, plus the exact chance and surprise for each bet |
 | 11 | correct definitions with one small slip (a constant, a swapped operator, a dropped or extra wrapper); tests that fail, the patch, tests that pass | interpreter applies the patch and reruns the tests |
+| 12 | programs evaluated piece by piece with occasional caught slips; episodes solved by thinking first, paying for a search only when thinking fails; step counts | interpreter, plus exact step counts |
 
 The curriculum mixes earlier groups back in as later ones are added, so foundations keep getting rehearsed.

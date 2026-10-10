@@ -642,3 +642,19 @@ name = "WRAP"
 group = 11
 vsa = "atom"
 note = "WRAP old OP args...: old becomes the first argument of OP"
+
+# ---- group 12: thinking -----------------------------------------------------
+
+[[token]]
+id = 171
+name = "OOPS"
+group = 12
+vsa = "atom"
+note = "right after EVAL e RESULT v: v was wrong; the thought is withdrawn (train with no loss on v)"
+
+[[token]]
+id = 172
+name = "COST"
+group = 12
+vsa = "atom"
+note = "COST e n: evaluating e takes n interpreter steps"
