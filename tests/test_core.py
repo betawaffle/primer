@@ -3,7 +3,8 @@ import unittest
 from primer.check import check, retracted_spans
 from primer.interp import evaluate
 from primer.serialize import canonical, from_ids, to_ids
-from primer.syntax import parse_expr, unparse
+from primer.split import heldout
+from primer.syntax import SPECIAL_FORMS, parse_expr, unparse
 from primer.values import ERR
 from primer.vocab import VOCAB
 
@@ -112,6 +113,26 @@ class TestCore(unittest.TestCase):
         self.assertEqual(from_ids(rec), s)
         self.assertEqual(rec["ids"][0], VOCAB["BOS"].id)
         self.assertEqual(canonical("BOS NUM⟨2.0⟩ END"), canonical("BOS NUM<2> END"))
+
+    def test_every_value_kind_has_a_vector(self):
+        for src in ["INT<5>", "NUM<0.5>", "STR<a>", "TIME<2026-10-09 15:30>", "REC<{a:1}>", "[ INT<1> ]",
+                    "NONE", "TRUE", "QUOTE ADD INT<1> INT<2>", "KIND WORD ADD"]:
+            with self.subTest(src):
+                self.assertTrue(evaluate(parse_expr(f"EQ CLEAN BIND STR<k> {src} CLEAN BIND STR<k> {src}")))
+        self.assertGreater(evaluate(parse_expr("SIM TIME<2026-10-09 15:30> TIME<2026-10-16 15:30>")), 0.5)
+
+    def test_every_operator_is_implemented(self):
+        # An operator with no implementation would raise instead of giving ERR.
+        for tok in VOCAB.tokens:
+            if tok.args and tok.name not in SPECIAL_FORMS:
+                with self.subTest(tok.name):
+                    args = " ".join(["INT<1>"] * tok.arity)
+                    evaluate(parse_expr(f"{tok.name} {args}"))
+
+    def test_part_is_walked_like_any_expression(self):
+        s = "BOS DEF NEW1 PART ADD INT<2> END PATCH NEW1 REPLACE INT<2> INT<3> END APP NEW1 INT<1> INT<4> END"
+        self.assertEqual(check(s).errors, [])
+        self.assertEqual(heldout("BOS MAP PART ADD FOLD LAM LAM ADD V1 V0 INT<0> [ INT<1> ] [ INT<1> ] [ INT<2> ] END"), ["fold_in_map"])
 
     def test_ids_are_unique_and_stable(self):
         ids = [t.id for t in VOCAB.tokens]
