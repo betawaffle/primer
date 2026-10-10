@@ -119,6 +119,12 @@ Field names are atoms, so the token `lr` is also the role `LR` used inside REC v
 
 Added after v0 (ids 163–166). The model states how likely something is before seeing it, and log loss on what actually happens trains it to be calibrated. The first data uses chances the interpreter can compute exactly (uniform draws from a list); bets on the model's own actions (`BET p ACT …`) are scored once there is a model to make them.
 
+## 11. Edits (4)
+
+`PATCH` `AT` `REPLACE` `WRAP`
+
+Added after v0 (ids 167–170). Programming is mostly fixing almost-right code, and a short edit is easier to learn and to search over than a whole new program. Targets are matched by text, with `AT` to pick among repeats, so an edit is copyable from the program it changes.
+
 ## Example
 
 ```

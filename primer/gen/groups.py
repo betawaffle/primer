@@ -10,6 +10,7 @@ import datetime as dt
 import math
 
 from ..check import compare_functions
+from ..edit import apply_edit, occurrences
 from ..interp import Context, evaluate, remember_literals
 from ..syntax import is_literal, parse_expr, unparse
 from ..values import ERR, Closure, show
@@ -504,7 +505,102 @@ def group10(r):
     return _seq(*parts), None
 
 
-GROUPS = {1: group1, 2: group2, 3: group3, 4: group4, 5: group5, 6: group6, 10: group10}
+# ---- group 11: edits -------------------------------------------------------------------
+
+_SWAPS = {"ADD": "SUB", "SUB": "ADD", "MUL": "ADD", "MIN": "MAX", "MAX": "MIN", "LT": "GT", "GT": "LT",
+          "EQ": "NEQ", "NEQ": "EQ", "AND": "OR", "OR": "AND", "ARGMIN": "ARGMAX", "ARGMAX": "ARGMIN"}
+
+
+def _mutate(r, sub):
+    """A small change to one subexpression: the kind of slip that makes code almost right."""
+    opts = []
+    if sub[0] == "lit" and type(sub[1]) is int:
+        opts.append(lambda: lit(sub[1] + r.choice([-2, -1, 1, 2, 3])))
+    if sub[0] == "op" and sub[1] in _SWAPS:
+        opts.append(lambda: ("op", _SWAPS[sub[1]], sub[2]))
+    if sub[0] == "op" and sub[2]:
+        opts.append(lambda: sub[2][0])                       # drop the operator, keep its first argument
+    opts.append(lambda: r.choice([op("NEG", sub), op("ABS", sub), op("ADD", sub, lit(r.randint(1, 3))),
+                                  op("MUL", sub, lit(r.randint(2, 3)))]))
+    return r.choice(opts)()
+
+
+def _edit_text(e):
+    at = "" if e[1] is None else f"AT INT<{e[1]}> "
+    if e[0] == "replace":
+        return f"{at}REPLACE {unparse(e[2])} {unparse(e[3])}"
+    return " ".join([f"{at}WRAP {unparse(e[2])} {e[3]}", *map(unparse, e[4])])
+
+
+def _make_edit(node, path, new):
+    """The edit that turns the subexpression at path into new: a WRAP when new
+    just puts an operator around it, else a REPLACE."""
+    old = dict(subtrees(node))[path]
+    paths = occurrences(node, old)
+    at = None if len(paths) == 1 else paths.index(path)
+    if new[0] == "op" and new[1] not in ("LAM", "LET") and new[2] and unparse(new[2][0]) == unparse(old):
+        e = ("wrap", at, old, new[1], new[2][1:])
+    else:
+        e = ("replace", at, old, new)
+    if unparse(apply_edit(node, e)) != unparse(replace(node, path, new)):
+        raise Retry   # an earlier match of old overlaps this one
+    return e
+
+
+def _mutation(r):
+    """(original definition, mutated definition, path of the change)."""
+    good = ("lam", _unary(r, depth=r.randint(1, 3)))
+    if len(unparse(good).split()) < 4:   # LAM V0 and the like: nothing to get wrong
+        raise Retry
+    spots = [p for p, _ in subtrees(good) if p]
+    path = r.choice(spots)
+    bad = replace(good, path, _mutate(r, dict(subtrees(good))[path]))
+    if unparse(bad) == unparse(good):
+        raise Retry
+    return good, bad, path
+
+
+def group11(r):
+    """Repairs (a definition fails its tests, a PATCH fixes it, the tests pass)
+    and plain edits (a PATCH, then EXPAND shows the new definition)."""
+    good, bad, path = _mutation(r)
+    w = f"NEW{r.randrange(16)}"
+    ctx = Context(fuel=20_000)
+    if r.random() < 0.3:
+        ctx.words[w] = _eval_fun(good, ctx, w)
+        e = _make_edit(good, path, dict(subtrees(bad))[path])
+        ctx.words[w] = _eval_fun(bad, ctx, w)
+        parts = [f"DEF {w} {unparse(good)} END", f"PATCH {w} {_edit_text(e)} END"]
+        for x in _working_inputs(r, ("word", w), ctx, r.randint(0, 2)) if r.random() < 0.5 else []:
+            call = op("APP", ("word", w), lit(x))
+            parts.append(f"EVAL {unparse(call)} RESULT {show(_eval(call, ctx))}")
+        parts.append(f"EXPAND {w} RESULT {unparse(bad)}")
+        return _seq(*parts), None
+
+    # Repair: tests that the right definition passes and the wrong one fails.
+    ctx.words[w] = _eval_fun(good, ctx, w)
+    xs = _working_inputs(r, ("word", w), ctx, r.randint(2, 4))
+    tests = ("list", [lit(x) for x in xs])
+    want = _eval(op("MAP", ("word", w), tests), ctx)
+    ctx.words[w] = _eval_fun(bad, ctx, w)
+    got = evaluate(op("MAP", ("word", w), tests), ctx)
+    if got is ERR or not size_ok(got) or got == want:
+        raise Retry
+    check = f"EQ MAP {w} {unparse(tests)} {show(want)}"
+    parts = [f"DEF {w} {unparse(bad)} END"]
+    if r.random() < 0.5:
+        parts.append(f"MAP {w} {unparse(tests)} {show(got)}")
+    parts.append(f"{check} FALSE")
+    fix = _make_edit(bad, path, dict(subtrees(good))[path])
+    if fix[0] == "replace" and r.random() < 0.2:   # synthesize the fix
+        holed = ("replace", fix[1], fix[2], ("hole",))
+        return " ".join(["BOS", *parts, f"PATCH {w} {_edit_text(holed)} END", f"{check} TRUE", "END",
+                         unparse(fix[3]), "END"]), None
+    parts += [f"PATCH {w} {_edit_text(fix)} END", f"{check} TRUE"]
+    return _seq(*parts), None
+
+
+GROUPS = {1: group1, 2: group2, 3: group3, 4: group4, 5: group5, 6: group6, 10: group10, 11: group11}
 
 
 def generate(r, group, max_tries=200):

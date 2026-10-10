@@ -1,6 +1,6 @@
 # primer language spec (v0)
 
-Covers vocabulary groups 1–6 (syntax, logic, values, computation, teaching frames and episodes) and group 10 (beliefs). Groups 7–9 are reserved for the Lab v0 actions and schema fields, which come later.
+Covers vocabulary groups 1–6 (syntax, logic, values, computation, teaching frames and episodes) group 10 (beliefs) and group 11 (edits). Groups 7–9 are reserved for the Lab v0 actions and schema fields, which come later.
 
 ## Source of truth
 
@@ -71,6 +71,7 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 | `GOAL pred`, `BUDGET n`, `ACT EVAL expr`, `ACT DONE x`, `OBS value`, `OK`, `ERR` | an episode: each action costs one budget; `EVAL` is followed by `OBS` its value (or `ERR`); `DONE x` by `OK` if `pred x` holds, else `ERR` |
 | `BET p pred list`, `DRAW x`, `YES` / `NO` | a bet that a uniform draw from list passes pred, with probability p (exactly `CHANCE pred list`); the draw, which must be in the list; whether it passed |
 | `BET p` before an `ACT` | a bet that the action succeeds (`OBS` for `EVAL`, `OK` for `DONE`); see Beliefs |
+| `PATCH word edit… END` | changes a defined word's definition in place (see Edits); later items use the new definition |
 | `SURPRISE s` | right after a bet is settled: s = −log2 of the probability the bet gave to what happened, in bits |
 
 **Holes:** a sequence may contain one `HOLE`. The tokens between its last two `END`s are the filler; the checker puts them in place of the hole and checks the result, so any correct filler passes.
@@ -80,6 +81,10 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 `CHANCE pred list` is the fraction of the list's items that pass pred (a NUM; `ERR` for an empty list). A `BET` must be settled (by a draw and its outcome, or by the action it precedes) before the next `BET` and before `END`.
 
 The checker has two modes. `check(text)` is for training data: a draw bet must state the exact chance, and a bet on an action is *unverified* (there is no right answer to how sure the model should be), so generators never write one. `check(text, bets="score")` is for grading a model: any probability is accepted, and `Report.scores` lists `{p, outcome, bits}` for every settled bet. Average bits is the log loss; calibration is how well p matches the observed frequencies. `SURPRISE` itself is always checked exactly, since it is arithmetic.
+
+## Edits
+
+Inside `PATCH word … END`, each edit is `REPLACE old new` (the subexpression old becomes new) or `WRAP old OP args…` (old becomes OP's first argument, followed by the rest of OP's arguments). old is matched by its text, like find-and-replace, and must occur exactly once in the current definition; `AT INT⟨k⟩` before an edit picks the k-th occurrence instead (0-based, reading order). Edits apply in order, each to the result of the one before. A patch fails if old isn't there, is ambiguous without `AT`, or the result doesn't evaluate. Implemented in `primer/edit.py`.
 
 ## Serialization
 
@@ -100,5 +105,6 @@ The checker has two modes. `check(text)` is for training data: a draw bet must s
 | 5 | `EVAL`/`RESULT`; definitions with uses and `EXPAND`; words learned from examples with `ASK`; `SAME`/`DIFF` from algebraic rewrites or unrelated functions |
 | 6 | episodes with a goal predicate and a budget, solved by filtering, by probing candidates, or with failed actions and wrong answers |
 | 10 | exact `CHANCE` items; rounds of `BET`/`DRAW`/outcome/`SURPRISE` on a predicate (sometimes a defined word) and lists; holes for the probability. Certain chances (0 and 1) are kept rare |
+| 11 | repairs: a definition with one small slip, tests that fail, the `PATCH`, tests that pass (sometimes with the fix as a hole); plain edits followed by `EXPAND` |
 
 Every answer is computed by the interpreter, so a generator can choose a bad question but never a wrong answer, and every sequence is run through the checker again before it is written. Words are assigned random `NEW` numbers per sequence so no number gets a fixed meaning.

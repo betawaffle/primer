@@ -612,3 +612,33 @@ name = "SURPRISE"
 group = 10
 vsa = "atom"
 note = "SURPRISE s: -log2 of the probability the last bet gave to what happened, in bits"
+
+# ---- group 11: edits --------------------------------------------------------
+
+[[token]]
+id = 167
+name = "PATCH"
+group = 11
+vsa = "atom"
+note = "PATCH word edit... END: change a defined word's definition in place"
+
+[[token]]
+id = 168
+name = "AT"
+group = 11
+vsa = "atom"
+note = "AT INT<k> before an edit: its target is the k-th occurrence (0-based) of old"
+
+[[token]]
+id = 169
+name = "REPLACE"
+group = 11
+vsa = "atom"
+note = "REPLACE old new: the subexpression old becomes new; old must occur once unless AT says which"
+
+[[token]]
+id = 170
+name = "WRAP"
+group = 11
+vsa = "atom"
+note = "WRAP old OP args...: old becomes the first argument of OP"
