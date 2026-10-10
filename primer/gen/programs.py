@@ -5,6 +5,10 @@ INT, NUM, BOOL, STR, LINT (list of INT). Variables are tracked as a stack of
 types (innermost last), so de Bruijn indices are always in scope and typed.
 Programs can still fail at run time (an index out of range, a divide by
 zero); callers evaluate them and resample when the result is ERR.
+
+To keep programs looking like something a person would write, every LET and
+every function body uses the variable it binds, and IF never tests a
+constant.
 """
 from ..edit import replace, subtrees  # noqa: F401  (re-exported for generators)
 
@@ -66,6 +70,34 @@ class ProgramGen:
             return ("list", [lit(r.randint(-3, 9)) for _ in range(r.randint(0, 5))])
         raise ValueError(ty)
 
+    def using(self, ty, d, env, idxs=(0,)):
+        """An expression that uses at least one of the variables idxs (de Bruijn,
+        relative to env) and isn't just that variable, so a binding is never
+        pointless and a function is never the identity."""
+        r = self.r
+        for _ in range(8):
+            e = self.expr(ty, d, env)
+            if e[0] != "var" and any(uses_var(e, i) for i in idxs):
+                return e
+        ints = [i for i in idxs if i < len(env) and env[-1 - i] == "INT"]
+        if not ints:
+            raise ValueError(f"no way to use {idxs} as {ty}")
+        v = ("var", r.choice(ints))
+        if ty == "BOOL":
+            return op(r.choice(["LT", "GT", "EQ"]), v, lit(r.randint(*INT_RANGE)))
+        if ty == "INT":
+            other = ("var", 1 - v[1]) if len(ints) == 2 else lit(r.randint(1, 5))
+            return op(r.choice(["ADD", "SUB", "MUL", "MAX"]), v, other)
+        raise ValueError(f"no way to use {idxs} as {ty}")
+
+    def cond(self, d, env):
+        """A BOOL that isn't a constant, for IF."""
+        for _ in range(8):
+            c = self.expr("BOOL", d, env)
+            if c[0] != "lit":
+                return c
+        return op("LT", self.expr("INT", d, env), self.expr("INT", d, env))
+
     # ---- productions, as (weight, builder) --------------------------------
 
     def _INT(self, d, env):
@@ -78,11 +110,11 @@ class ProgramGen:
             (1, lambda: op("LEN", e("LINT", d, env))),
             (1, lambda: op("GET", e("LINT", d, env), lit(r.randint(0, 2)))),
             (1, lambda: op(r.choice(["ARGMIN", "ARGMAX"]), e("LINT", d, env))),
-            (1, lambda: op("FOLD", ("lam", ("lam", e("INT", d, (*env, "INT", "INT")))),
+            (1, lambda: op("FOLD", ("lam", ("lam", self.using("INT", d, (*env, "INT", "INT"), (0, 1)))),
                            e("INT", 0, env), e("LINT", d, env))),
-            (1, lambda: op("IF", e("BOOL", d, env), e("INT", d, env), e("INT", d, env))),
-            (1, lambda: ("let", e("INT", d, env), e("INT", d, (*env, "INT")))),
-            (1, lambda: op("APP", ("lam", e("INT", d, (*env, "INT"))), e("INT", d, env))),
+            (1, lambda: op("IF", self.cond(d, env), e("INT", d, env), e("INT", d, env))),
+            (1, lambda: ("let", e("INT", d, env), self.using("INT", d, (*env, "INT")))),
+            (1, lambda: op("APP", ("lam", self.using("INT", d, (*env, "INT"))), e("INT", d, env))),
         ]
         if self.words:
             opts.append((3, lambda: op("APP", ("word", r.choice(self.words)), e("INT", d, env))))
@@ -96,7 +128,7 @@ class ProgramGen:
             (1, lambda: op(r.choice(["MIN", "MAX"]), e("NUM", d, env), e("NUM", d, env))),
             (1, lambda: op("LOG", lit(r.choice([1.0, 2.0, 10.0, 0.5, 100.0])))),
             (1, lambda: op("EXP", lit(r.choice([0.0, 1.0, -1.0, 2.0])))),
-            (1, lambda: op("IF", e("BOOL", d, env), e("NUM", d, env), e("NUM", d, env))),
+            (1, lambda: op("IF", self.cond(d, env), e("NUM", d, env), e("NUM", d, env))),
         ]
 
     def _BOOL(self, d, env):
@@ -112,7 +144,7 @@ class ProgramGen:
     def _STR(self, d, env):
         e, r = self.expr, self.r
         return [
-            (2, lambda: op("IF", e("BOOL", d, env), e("STR", d, env), e("STR", d, env))),
+            (2, lambda: op("IF", self.cond(d, env), e("STR", d, env), e("STR", d, env))),
             (1, lambda: op("GET", ("list", [lit(rand_str(r)) for _ in range(3)]), lit(r.randint(0, 2)))),
             (1, lambda: self._field(env)),
         ]
@@ -127,8 +159,8 @@ class ProgramGen:
         e, r = self.expr, self.r
         return [
             (1, lambda: op("RANGE", lit(r.randint(0, 7)))),
-            (2, lambda: op("MAP", ("lam", e("INT", d, (*env, "INT"))), e("LINT", d, env))),
-            (2, lambda: op("FILTER", ("lam", e("BOOL", d, (*env, "INT"))), e("LINT", d, env))),
+            (2, lambda: op("MAP", ("lam", self.using("INT", d, (*env, "INT"))), e("LINT", d, env))),
+            (2, lambda: op("FILTER", ("lam", self.using("BOOL", d, (*env, "INT"))), e("LINT", d, env))),
             (1, lambda: op("SORT", e("LINT", d, env))),
             (1, lambda: op("TOPK", e("LINT", d, env), lit(r.randint(0, 3)))),
         ]
@@ -165,17 +197,22 @@ def substitute(node, value, depth=0):
     return node
 
 
-def uses_var0(node, depth=0):
+def uses_var(node, i, depth=0):
+    """Does node refer to variable V<i> of its enclosing scope?"""
     tag = node[0]
     if tag == "var":
-        return node[1] == depth
+        return node[1] == i + depth
     if tag == "op":
-        return any(uses_var0(a, depth) for a in node[2])
+        return any(uses_var(a, i, depth) for a in node[2])
     if tag in ("list", "rec"):
-        return any(uses_var0(a, depth) for a in node[1])
+        return any(uses_var(a, i, depth) for a in node[1])
     if tag == "lam":
-        return uses_var0(node[1], depth + 1)
+        return uses_var(node[1], i, depth + 1)
     if tag == "let":
-        return uses_var0(node[1], depth) or uses_var0(node[2], depth + 1)
+        return uses_var(node[1], i, depth) or uses_var(node[2], i, depth + 1)
     return False
+
+
+def uses_var0(node):
+    return uses_var(node, 0)
 

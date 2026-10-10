@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from primer.check import check
+from primer.serialize import digest
 from primer.gen import GROUPS, generate
 from primer.gen.__main__ import main
 from primer.gen.heldout import TEST_GENERATORS, generate_test
@@ -54,6 +55,13 @@ class TestGenerators(unittest.TestCase):
                     for split in ("train", "test")}
             self.assertFalse(any(heldout(row["text"]) for row in rows["train"]))
             self.assertTrue(all(row["heldout"] for row in rows["test"]))
+
+    def test_cli_has_no_repeats_across_shards(self):
+        with tempfile.TemporaryDirectory() as d:
+            main(["--groups", "2", "--count", "300", "--shard-size", "30", "--workers", "2", "--out", d])
+            texts = [json.loads(line)["text"] for p in Path(d).glob("*.jsonl") for line in p.read_text().splitlines()]
+            self.assertEqual(len(texts), 300)
+            self.assertEqual(len({digest(t) for t in texts}), 300)
 
     def test_deterministic(self):
         a = [generate(random.Random(5), g) for g in GROUPS]
