@@ -199,11 +199,12 @@ def _op(name, args, env, ctx):
         return valeq(v[0], v[1], strict=False)
     if name == "NEQ":
         return not valeq(v[0], v[1], strict=False)
-    if name in ("LT", "GT"):
+    if name in ("LT", "GT", "LE", "GE"):
         _ordered(*v)
-        return v[0] < v[1] if name == "LT" else v[0] > v[1]
+        a, b = v
+        return {"LT": a < b, "GT": a > b, "LE": a <= b, "GE": a >= b}[name]
 
-    if name in ("ADD", "SUB", "MUL", "DIV", "MIN", "MAX"):
+    if name in ("ADD", "SUB", "MUL", "DIV", "MOD", "MIN", "MAX"):
         a, b = v
         _need(numeric(a) and numeric(b))
         if name == "ADD":
@@ -215,6 +216,9 @@ def _op(name, args, env, ctx):
         if name == "DIV":
             _need(b != 0)
             return _num_result(a, b, a // b if kind(a) == kind(b) == "INT" else a / b)
+        if name == "MOD":   # sign of the divisor, so that a = b * DIV a b + MOD a b for INTs
+            _need(b != 0)
+            return _num_result(a, b, a % b)
         return min(a, b) if name == "MIN" else max(a, b)
     if name in ("NEG", "ABS"):
         _need(numeric(v[0]))
@@ -238,6 +242,12 @@ def _op(name, args, env, ctx):
         lst, i = v
         _need(kind(lst) == "LIST" and kind(i) == "INT" and 0 <= i < len(lst))
         return lst[i]
+    if name == "CONS":
+        _need(kind(v[1]) == "LIST")
+        return [v[0], *v[1]]
+    if name == "CONCAT":
+        _need(kind(v[0]) == kind(v[1]) == "LIST")
+        return v[0] + v[1]
     if name == "MAP":
         f, lst = v
         _need(kind(lst) == "LIST")

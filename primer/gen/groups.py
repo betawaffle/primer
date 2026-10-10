@@ -227,8 +227,9 @@ def _working_inputs(r, f, ctx, n):
 
 
 _INT_PREDICATES = [
-    ("EQ INT<0> SUB V0 MUL INT<{k}> DIV V0 INT<{k}>", lambda r: {"k": r.randint(2, 5)}),          # divisible by k
-    ("NOT EQ INT<0> SUB V0 MUL INT<{k}> DIV V0 INT<{k}>", lambda r: {"k": r.randint(2, 3)}),      # not divisible
+    ("EQ INT<0> MOD V0 INT<{k}>", lambda r: {"k": r.randint(2, 5)}),                              # divisible by k
+    ("NEQ INT<0> MOD V0 INT<{k}>", lambda r: {"k": r.randint(2, 3)}),                             # not divisible
+    ("GE V0 INT<{k}>", lambda r: {"k": r.randint(-3, 10)}),
     ("GT V0 INT<{k}>", lambda r: {"k": r.randint(-3, 10)}),
     ("LT V0 INT<{k}>", lambda r: {"k": r.randint(-3, 10)}),
     ("AND GT V0 INT<{a}> LT V0 INT<{b}>", lambda r: (lambda a: {"a": a, "b": a + r.randint(2, 6)})(r.randint(-3, 8))),
@@ -383,7 +384,7 @@ def _goal(r):
         src, n = f"LAM EQ ADD V0 INT<{a}> INT<{a + x}>", x + r.randint(3, 10)
     else:
         a, m = r.randint(5, 40), r.randint(3, 9)
-        src, n = f"LAM AND GT V0 INT<{a}> EQ INT<0> SUB V0 MUL INT<{m}> DIV V0 INT<{m}>", a + 2 * m
+        src, n = f"LAM AND GT V0 INT<{a}> EQ INT<0> MOD V0 INT<{m}>", a + 2 * m
     return src, n
 
 
@@ -503,8 +504,9 @@ def gen_belief(r, bet_on_word=None):
 
 # ---- edit --------------------------------------------------------------------
 
-_SWAPS = {"ADD": "SUB", "SUB": "ADD", "MUL": "ADD", "MIN": "MAX", "MAX": "MIN", "LT": "GT", "GT": "LT",
-          "EQ": "NEQ", "NEQ": "EQ", "AND": "OR", "OR": "AND", "ARGMIN": "ARGMAX", "ARGMAX": "ARGMIN"}
+_SWAPS = {"ADD": ["SUB"], "SUB": ["ADD"], "MUL": ["ADD"], "DIV": ["MOD"], "MOD": ["DIV"], "MIN": ["MAX"],
+          "MAX": ["MIN"], "LT": ["GT", "LE"], "GT": ["LT", "GE"], "LE": ["LT", "GE"], "GE": ["GT", "LE"],
+          "EQ": ["NEQ"], "NEQ": ["EQ"], "AND": ["OR"], "OR": ["AND"], "ARGMIN": ["ARGMAX"], "ARGMAX": ["ARGMIN"]}
 
 
 def _mutate(r, sub):
@@ -513,7 +515,7 @@ def _mutate(r, sub):
     if sub[0] == "lit" and type(sub[1]) is int:
         opts.append(lambda: lit(sub[1] + r.choice([-2, -1, 1, 2, 3])))
     if sub[0] == "op" and sub[1] in _SWAPS:
-        opts.append(lambda: ("op", _SWAPS[sub[1]], sub[2]))
+        opts.append(lambda: ("op", r.choice(_SWAPS[sub[1]]), sub[2]))
     if sub[0] == "op" and sub[2]:
         opts.append(lambda: sub[2][0])                       # drop the operator, keep its first argument
     opts.append(lambda: r.choice([op("NEG", sub), op("ABS", sub), op("ADD", sub, lit(r.randint(1, 3))),

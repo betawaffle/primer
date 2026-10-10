@@ -272,7 +272,7 @@ BOS DEF NEW4 LAM LT V0 INT⟨5⟩ END
 ```
 Filling in the probability:
 ```
-BOS BET HOLE LAM EQ INT⟨0⟩ SUB V0 MUL INT⟨3⟩ DIV V0 INT⟨3⟩ RANGE INT⟨9⟩ DRAW INT⟨6⟩ YES END NUM⟨0.333333333333⟩ END
+BOS BET HOLE LAM EQ INT⟨0⟩ MOD V0 INT⟨3⟩ RANGE INT⟨9⟩ DRAW INT⟨6⟩ YES END NUM⟨0.333333333333⟩ END
 ```
 A bet can also come right before an action in an episode (`BET p ACT …`); the action's outcome settles it. Generated data doesn't contain these yet, because only the model can say how sure it is: the checker scores them (`check(text, bets="score")` puts the surprise of every settled bet in `Report.scores`) instead of checking them.
 

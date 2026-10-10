@@ -7,7 +7,7 @@ from primer.check import check, split_sequences
 
 EXAMPLES = Path(__file__).with_name("examples.md")
 # Words defined only by examples, with the predicate the generator would have used.
-TRUTH = {"NEW2": "LAM EQ INT<0> SUB V0 MUL INT<2> DIV V0 INT<2>"}
+TRUTH = {"NEW2": "LAM EQ INT<0> MOD V0 INT<2>"}
 
 
 def sequences():

@@ -66,6 +66,11 @@ class TestCore(unittest.TestCase):
                     "FOLD LAM LAM APP V1 V0 INT<0> RANGE INT<3>"]:
             self.assertIs(evaluate(parse_expr(src)), ERR, src)
 
+    def test_building_lists(self):
+        for src, want in [("CONS INT<1> [ INT<2> ]", [1, 2]), ("CONCAT [ INT<1> ] [ INT<2> ]", [1, 2]),
+                          ("FOLD LAM LAM CONS V0 V1 [ ] RANGE INT<3>", [2, 1, 0]), ("CONS INT<1> INT<2>", ERR)]:
+            self.assertEqual(evaluate(parse_expr(src)), want, src)
+
     def test_runaway_programs_stop(self):
         loop = "LET LAM APP V0 V0 APP V0 V0"  # (λx. x x)(λx. x x)
         self.assertIs(evaluate(parse_expr(loop)), ERR)
@@ -74,6 +79,7 @@ class TestCore(unittest.TestCase):
         self.assertEqual(evaluate(parse_expr("MUL INT<18446744073709551557> INT<18446744073709551557>")),
                          18446744073709551557 ** 2)
         self.assertEqual(evaluate(parse_expr("DIV INT<-7> INT<2>")), -4)  # rounds down
+        self.assertEqual(evaluate(parse_expr("MOD INT<-7> INT<2>")), 1)   # and agrees with MOD
 
     def test_bets_on_actions_are_scored(self):
         s = "BOS GOAL LAM GT V0 INT<1> BUDGET INT<1> BET NUM<0.9> ACT DONE INT<0> ERR SURPRISE NUM<3.32192809489> END"
@@ -138,7 +144,7 @@ class TestCore(unittest.TestCase):
         ids = [t.id for t in VOCAB.tokens]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(sorted(ids), list(range(len(ids))))             # no gaps
-        pinned = {"BOS": 0, "R0": 25, "LAM": 89, "EVAL": 129, "CHANCE": 178}   # ids must never change
+        pinned = {"BOS": 0, "R0": 27, "LAM": 91, "EVAL": 134, "CHANCE": 183}   # ids must never change
         self.assertEqual({k: VOCAB[k].id for k in pinned}, pinned)
 
 

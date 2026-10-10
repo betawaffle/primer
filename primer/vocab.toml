@@ -249,6 +249,22 @@ vsa = "atom"
 
 [[token]]
 id = 25
+name = "LE"
+group = "values"
+args = ["ORD", "ORD"]
+ret = "BOOL"
+vsa = "atom"
+
+[[token]]
+id = 26
+name = "GE"
+group = "values"
+args = ["ORD", "ORD"]
+ret = "BOOL"
+vsa = "atom"
+
+[[token]]
+id = 27
 name = "R"
 group = "values"
 ret = "ANY"
@@ -259,7 +275,7 @@ note = "slot; payload binds its value"
 # ---- compute: functions, arithmetic, lists, records and vector algebra ------
 
 [[token]]
-id = 89
+id = 91
 name = "LAM"
 group = "compute"
 args = ["BODY"]
@@ -268,7 +284,7 @@ vsa = "atom"
 note = "binds V0 inside its body"
 
 [[token]]
-id = 90
+id = 92
 name = "APP"
 group = "compute"
 args = ["FUN", "ANY"]
@@ -276,7 +292,7 @@ ret = "ANY"
 vsa = "atom"
 
 [[token]]
-id = 91
+id = 93
 name = "LET"
 group = "compute"
 args = ["ANY", "BODY"]
@@ -285,7 +301,7 @@ vsa = "atom"
 note = "binds the first argument as V0 inside the body"
 
 [[token]]
-id = 92
+id = 94
 name = "V"
 group = "compute"
 ret = "ANY"
@@ -294,7 +310,7 @@ count = 8
 note = "de Bruijn variable; V0 = nearest binder"
 
 [[token]]
-id = 100
+id = 102
 name = "PART"
 group = "compute"
 args = ["OP", "ANY"]
@@ -303,7 +319,7 @@ vsa = "atom"
 note = "PART op x: op with its first argument filled in, a function of the rest (PART SUB x = LAM SUB x V0)"
 
 [[token]]
-id = 101
+id = 103
 name = "ADD"
 group = "compute"
 args = ["NUMERIC", "NUMERIC"]
@@ -311,7 +327,7 @@ ret = "NUMERIC"
 vsa = "atom"
 
 [[token]]
-id = 102
+id = 104
 name = "SUB"
 group = "compute"
 args = ["NUMERIC", "NUMERIC"]
@@ -319,7 +335,7 @@ ret = "NUMERIC"
 vsa = "atom"
 
 [[token]]
-id = 103
+id = 105
 name = "MUL"
 group = "compute"
 args = ["NUMERIC", "NUMERIC"]
@@ -327,7 +343,7 @@ ret = "NUMERIC"
 vsa = "atom"
 
 [[token]]
-id = 104
+id = 106
 name = "DIV"
 group = "compute"
 args = ["NUMERIC", "NUMERIC"]
@@ -335,7 +351,16 @@ ret = "NUMERIC"
 vsa = "atom"
 
 [[token]]
-id = 105
+id = 107
+name = "MOD"
+group = "compute"
+args = ["NUMERIC", "NUMERIC"]
+ret = "NUMERIC"
+vsa = "atom"
+note = "remainder with the sign of the divisor, so DIV and MOD agree: a = b * DIV a b + MOD a b"
+
+[[token]]
+id = 108
 name = "MIN"
 group = "compute"
 args = ["NUMERIC", "NUMERIC"]
@@ -343,7 +368,7 @@ ret = "NUMERIC"
 vsa = "atom"
 
 [[token]]
-id = 106
+id = 109
 name = "MAX"
 group = "compute"
 args = ["NUMERIC", "NUMERIC"]
@@ -351,7 +376,7 @@ ret = "NUMERIC"
 vsa = "atom"
 
 [[token]]
-id = 107
+id = 110
 name = "NEG"
 group = "compute"
 args = ["NUMERIC"]
@@ -359,7 +384,7 @@ ret = "NUMERIC"
 vsa = "atom"
 
 [[token]]
-id = 108
+id = 111
 name = "ABS"
 group = "compute"
 args = ["NUMERIC"]
@@ -367,7 +392,7 @@ ret = "NUMERIC"
 vsa = "atom"
 
 [[token]]
-id = 109
+id = 112
 name = "LOG"
 group = "compute"
 args = ["NUMERIC"]
@@ -375,7 +400,7 @@ ret = "NUM"
 vsa = "atom"
 
 [[token]]
-id = 110
+id = 113
 name = "EXP"
 group = "compute"
 args = ["NUMERIC"]
@@ -383,7 +408,7 @@ ret = "NUM"
 vsa = "atom"
 
 [[token]]
-id = 111
+id = 114
 name = "LEN"
 group = "compute"
 args = ["LIST"]
@@ -391,7 +416,7 @@ ret = "INT"
 vsa = "atom"
 
 [[token]]
-id = 112
+id = 115
 name = "GET"
 group = "compute"
 args = ["LIST", "INT"]
@@ -399,7 +424,25 @@ ret = "ANY"
 vsa = "atom"
 
 [[token]]
-id = 113
+id = 116
+name = "CONS"
+group = "compute"
+args = ["ANY", "LIST"]
+ret = "LIST"
+vsa = "atom"
+note = "CONS x list: x put in front of the list"
+
+[[token]]
+id = 117
+name = "CONCAT"
+group = "compute"
+args = ["LIST", "LIST"]
+ret = "LIST"
+vsa = "atom"
+note = "the first list followed by the second"
+
+[[token]]
+id = 118
 name = "MAP"
 group = "compute"
 args = ["FUN", "LIST"]
@@ -407,7 +450,7 @@ ret = "LIST"
 vsa = "atom"
 
 [[token]]
-id = 114
+id = 119
 name = "FILTER"
 group = "compute"
 args = ["FUN", "LIST"]
@@ -415,7 +458,7 @@ ret = "LIST"
 vsa = "atom"
 
 [[token]]
-id = 115
+id = 120
 name = "FOLD"
 group = "compute"
 args = ["FUN", "ANY", "LIST"]
@@ -424,7 +467,7 @@ vsa = "atom"
 note = "f is curried: f acc x"
 
 [[token]]
-id = 116
+id = 121
 name = "SORT"
 group = "compute"
 args = ["LIST"]
@@ -432,7 +475,7 @@ ret = "LIST"
 vsa = "atom"
 
 [[token]]
-id = 117
+id = 122
 name = "TOPK"
 group = "compute"
 args = ["LIST", "INT"]
@@ -440,7 +483,7 @@ ret = "LIST"
 vsa = "atom"
 
 [[token]]
-id = 118
+id = 123
 name = "ARGMIN"
 group = "compute"
 args = ["LIST"]
@@ -448,7 +491,7 @@ ret = "INT"
 vsa = "atom"
 
 [[token]]
-id = 119
+id = 124
 name = "ARGMAX"
 group = "compute"
 args = ["LIST"]
@@ -456,7 +499,7 @@ ret = "INT"
 vsa = "atom"
 
 [[token]]
-id = 120
+id = 125
 name = "RANGE"
 group = "compute"
 args = ["INT"]
@@ -464,7 +507,7 @@ ret = "LIST"
 vsa = "atom"
 
 [[token]]
-id = 121
+id = 126
 name = "FIELD"
 group = "compute"
 args = ["REC", "STR"]
@@ -472,7 +515,7 @@ ret = "ANY"
 vsa = "atom"
 
 [[token]]
-id = 122
+id = 127
 name = "WITH"
 group = "compute"
 args = ["REC", "STR", "ANY"]
@@ -480,7 +523,7 @@ ret = "REC"
 vsa = "atom"
 
 [[token]]
-id = 123
+id = 128
 name = "KEYS"
 group = "compute"
 args = ["REC"]
@@ -488,7 +531,7 @@ ret = "LIST"
 vsa = "atom"
 
 [[token]]
-id = 124
+id = 129
 name = "BIND"
 group = "compute"
 args = ["VEC", "VEC"]
@@ -496,7 +539,7 @@ ret = "VEC"
 vsa = "atom"
 
 [[token]]
-id = 125
+id = 130
 name = "UNBIND"
 group = "compute"
 args = ["VEC", "VEC"]
@@ -504,7 +547,7 @@ ret = "VEC"
 vsa = "atom"
 
 [[token]]
-id = 126
+id = 131
 name = "BUNDLE"
 group = "compute"
 args = ["VEC", "VEC"]
@@ -512,7 +555,7 @@ ret = "VEC"
 vsa = "atom"
 
 [[token]]
-id = 127
+id = 132
 name = "SIM"
 group = "compute"
 args = ["VEC", "VEC"]
@@ -520,7 +563,7 @@ ret = "NUM"
 vsa = "atom"
 
 [[token]]
-id = 128
+id = 133
 name = "CLEAN"
 group = "compute"
 args = ["VEC"]
@@ -530,25 +573,25 @@ vsa = "atom"
 # ---- teach: defining words and checking claims about them -------------------
 
 [[token]]
-id = 129
+id = 134
 name = "EVAL"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 130
+id = 135
 name = "RESULT"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 131
+id = 136
 name = "DEF"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 132
+id = 137
 name = "NEW"
 group = "teach"
 ret = "ANY"
@@ -557,55 +600,55 @@ count = 16
 note = "fresh word, meaning set inside one sequence"
 
 [[token]]
-id = 148
+id = 153
 name = "EXPAND"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 149
+id = 154
 name = "EX"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 150
+id = 155
 name = "IS"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 151
+id = 156
 name = "ISNOT"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 152
+id = 157
 name = "ASK"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 153
+id = 158
 name = "YES"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 154
+id = 159
 name = "NO"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 155
+id = 160
 name = "SAME"
 group = "teach"
 vsa = "atom"
 
 [[token]]
-id = 156
+id = 161
 name = "DIFF"
 group = "teach"
 vsa = "atom"
@@ -613,7 +656,7 @@ vsa = "atom"
 # ---- quote: expressions as data, and their parts of speech ------------------
 
 [[token]]
-id = 157
+id = 162
 name = "QUOTE"
 group = "quote"
 args = ["QUOTED"]
@@ -622,7 +665,7 @@ vsa = "atom"
 note = "QUOTE x: the expression x as data, not evaluated. x is exactly one complete expression; arities say where it ends"
 
 [[token]]
-id = 158
+id = 163
 name = "WORD"
 group = "quote"
 args = ["TOKEN"]
@@ -631,7 +674,7 @@ vsa = "atom"
 note = "WORD t: the single token t as data, without its arguments (WORD ADD is the word, QUOTE ADD x y an expression)"
 
 [[token]]
-id = 159
+id = 164
 name = "SPAN"
 group = "quote"
 args = ["INT", "INT"]
@@ -640,7 +683,7 @@ vsa = "atom"
 note = "SPAN a b: tokens a..b (inclusive, BOS = 0) from earlier in this sequence, as a quote; they must be one expression or one token"
 
 [[token]]
-id = 160
+id = 165
 name = "KIND"
 group = "quote"
 args = ["EXPR"]
@@ -649,7 +692,7 @@ vsa = "atom"
 note = "KIND q: part of speech of the token heading q, from the type table: NOUN, VERB, ADJ or FRAME"
 
 [[token]]
-id = 161
+id = 166
 name = "NOUN"
 group = "quote"
 ret = "SYM"
@@ -657,7 +700,7 @@ vsa = "atom"
 note = "values and handles: literals, slots, variables, lists, records"
 
 [[token]]
-id = 162
+id = 167
 name = "VERB"
 group = "quote"
 ret = "SYM"
@@ -665,7 +708,7 @@ vsa = "atom"
 note = "operators and functions"
 
 [[token]]
-id = 163
+id = 168
 name = "ADJ"
 group = "quote"
 ret = "SYM"
@@ -673,7 +716,7 @@ vsa = "atom"
 note = "tests: operators returning BOOL from non-BOOL arguments, and words known from examples"
 
 [[token]]
-id = 164
+id = 169
 name = "FRAME"
 group = "quote"
 ret = "SYM"
@@ -683,28 +726,28 @@ note = "syntax, teaching and episode tokens"
 # ---- edit: changing a definition in place -----------------------------------
 
 [[token]]
-id = 165
+id = 170
 name = "PATCH"
 group = "edit"
 vsa = "atom"
 note = "PATCH word edit... END: change a defined word's definition in place"
 
 [[token]]
-id = 166
+id = 171
 name = "AT"
 group = "edit"
 vsa = "atom"
 note = "AT INT<k> before an edit: its target is the k-th occurrence (0-based) of old"
 
 [[token]]
-id = 167
+id = 172
 name = "REPLACE"
 group = "edit"
 vsa = "atom"
 note = "REPLACE old new: the subexpression old becomes new; old must occur once unless AT says which"
 
 [[token]]
-id = 168
+id = 173
 name = "WRAP"
 group = "edit"
 vsa = "atom"
@@ -713,43 +756,43 @@ note = "WRAP old OP args...: old becomes the first argument of OP"
 # ---- episode: goals, actions with a budget, and their outcomes --------------
 
 [[token]]
-id = 169
+id = 174
 name = "GOAL"
 group = "episode"
 vsa = "atom"
 
 [[token]]
-id = 170
+id = 175
 name = "BUDGET"
 group = "episode"
 vsa = "atom"
 
 [[token]]
-id = 171
+id = 176
 name = "ACT"
 group = "episode"
 vsa = "atom"
 
 [[token]]
-id = 172
+id = 177
 name = "OBS"
 group = "episode"
 vsa = "atom"
 
 [[token]]
-id = 173
+id = 178
 name = "DONE"
 group = "episode"
 vsa = "atom"
 
 [[token]]
-id = 174
+id = 179
 name = "OK"
 group = "episode"
 vsa = "atom"
 
 [[token]]
-id = 175
+id = 180
 name = "ERR"
 group = "episode"
 vsa = "atom"
@@ -757,14 +800,14 @@ vsa = "atom"
 # ---- think: thoughts before acting, withdrawing them, and what computing costs ----
 
 [[token]]
-id = 176
+id = 181
 name = "OOPS"
 group = "think"
 vsa = "atom"
 note = "right after EVAL e RESULT v: v was wrong; the thought is withdrawn (train with no loss on v)"
 
 [[token]]
-id = 177
+id = 182
 name = "COST"
 group = "think"
 vsa = "atom"
@@ -773,7 +816,7 @@ note = "COST e n: evaluating e takes n interpreter steps"
 # ---- belief: chances, bets and surprise -------------------------------------
 
 [[token]]
-id = 178
+id = 183
 name = "CHANCE"
 group = "belief"
 args = ["FUN", "LIST"]
@@ -782,21 +825,21 @@ vsa = "atom"
 note = "fraction of the list's items the predicate holds for: the chance a uniform draw passes"
 
 [[token]]
-id = 179
+id = 184
 name = "BET"
 group = "belief"
 vsa = "atom"
 note = "BET p pred list: chance p that a draw from list passes pred; BET p ACT ...: chance the action succeeds"
 
 [[token]]
-id = 180
+id = 185
 name = "DRAW"
 group = "belief"
 vsa = "atom"
 note = "DRAW x: the item drawn for the open bet; followed by YES or NO"
 
 [[token]]
-id = 181
+id = 186
 name = "SURPRISE"
 group = "belief"
 vsa = "atom"
@@ -805,14 +848,14 @@ note = "SURPRISE s: -log2 of the probability the last bet gave to what happened,
 # ---- agenda: side ideas kept for later --------------------------------------
 
 [[token]]
-id = 182
+id = 187
 name = "QUEUE"
 group = "agenda"
 vsa = "atom"
 note = "QUEUE GOAL pred | QUEUE fun: put a side idea on the agenda (a goal, or a candidate word) without leaving the current work"
 
 [[token]]
-id = 183
+id = 188
 name = "NEXT"
 group = "agenda"
 vsa = "atom"

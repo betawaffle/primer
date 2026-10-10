@@ -107,7 +107,7 @@ class ProgramGen:
             (3, lambda: op(r.choice(["ADD", "SUB", "MUL"]), e("INT", d, env), e("INT", d, env))),
             (1, lambda: op(r.choice(["MIN", "MAX"]), e("INT", d, env), e("INT", d, env))),
             (1, lambda: op(r.choice(["NEG", "ABS"]), e("INT", d, env))),
-            (1, lambda: op("DIV", e("INT", d, env), lit(r.choice([2, 3, 4, 5, -2])))),
+            (1, lambda: op(r.choice(["DIV", "MOD"]), e("INT", d, env), lit(r.choice([2, 3, 4, 5, -2])))),
             (1, lambda: op("LEN", e("LINT", d, env))),
             (1, lambda: op("GET", e("LINT", d, env), lit(r.randint(0, 2)))),
             (1, lambda: op(r.choice(["ARGMIN", "ARGMAX"]), e("LINT", d, env))),
@@ -137,8 +137,8 @@ class ProgramGen:
         return [
             (1, lambda: op("NOT", e("BOOL", d, env))),
             (2, lambda: op(r.choice(["AND", "OR", "IMPLIES"]), e("BOOL", d, env), e("BOOL", d, env))),
-            (3, lambda: op(r.choice(["EQ", "NEQ", "LT", "GT"]), e("INT", d, env), e("INT", d, env))),
-            (1, lambda: op(r.choice(["LT", "GT"]), e("NUM", d, env), e("NUM", d, env))),
+            (3, lambda: op(r.choice(["EQ", "NEQ", "LT", "GT", "LE", "GE"]), e("INT", d, env), e("INT", d, env))),
+            (1, lambda: op(r.choice(["LT", "GT", "LE", "GE"]), e("NUM", d, env), e("NUM", d, env))),
             (1, lambda: op("EQ", e("LINT", d, env), e("LINT", d, env))),
         ]
 
@@ -164,6 +164,11 @@ class ProgramGen:
             (2, lambda: op("FILTER", ("lam", self.using("BOOL", d, (*env, "INT"))), e("LINT", d, env))),
             (1, lambda: op("SORT", e("LINT", d, env))),
             (1, lambda: op("TOPK", e("LINT", d, env), lit(r.randint(0, 3)))),
+            (1, lambda: op("CONS", e("INT", d, env), e("LINT", d, env))),
+            (1, lambda: op("CONCAT", e("LINT", d, env), e("LINT", d, env))),
+            # building a list in a fold: f acc x puts something made from x in front
+            (1, lambda: op("FOLD", ("lam", ("lam", op("CONS", self.using("INT", d, (*env, "LINT", "INT")), ("var", 1)))),
+                           ("list", []), e("LINT", d, env))),
         ]
 
 
