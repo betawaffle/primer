@@ -408,7 +408,7 @@ def gen_episode(r):
         act(f"ACT EVAL {unparse(expr)} OBS {show(found)}")
         parts.append(f"BUDGET INT<{budget}>")
         answer = r.choice(found) if found else 0
-        act(f"ACT DONE INT<{answer}> {'OK' if holds(answer) else 'ERR'}")
+        act(f"ACT DONE INT<{answer}> {'YES' if holds(answer) else 'NO'}")
     else:
         if policy == "error":
             act("ACT EVAL " + r.choice(["DIV INT<1> INT<0>", "GET [ ] INT<0>", "ADD STR<x> INT<1>"]) + " ERR")
@@ -429,7 +429,7 @@ def gen_episode(r):
             raise Retry
         if answer is None:
             answer = r.randrange(n)  # out of budget: guess
-        act(f"ACT DONE INT<{answer}> {'OK' if holds(answer) else 'ERR'}")
+        act(f"ACT DONE INT<{answer}> {'YES' if holds(answer) else 'NO'}")
     return _seq(*parts), None
 
 
@@ -678,7 +678,7 @@ def _think_then_act(r):
         parts.append(f"ACT EVAL {unparse(search)} OBS {show(found)}")
         parts.append("BUDGET INT<1>")
         answer = found[0]
-    parts.append(f"ACT DONE INT<{answer}> OK")
+    parts.append(f"ACT DONE INT<{answer}> YES")
     return _seq(*parts), None
 
 
@@ -738,15 +738,15 @@ def _queue_goal(r):
     idea = f"QUEUE GOAL {unparse(var)}"
     if r.random() < 0.5:
         parts.append(idea)                       # the idea comes mid-task
-        parts.append(f"ACT DONE INT<{found[0]}> OK")
+        parts.append(f"ACT DONE INT<{found[0]}> YES")
     else:
-        parts.append(f"ACT DONE INT<{found[0]}> OK")
+        parts.append(f"ACT DONE INT<{found[0]}> YES")
         parts.append(idea)
     if r.random() < 0.6:                         # take it up
         parts += ["NEXT", f"GOAL {unparse(var)}", "BUDGET INT<2>"]
         hits = _solve_by_filter(r, var, parts, r.randint(n, n + 15), 2)
         if hits:
-            parts.append(f"ACT DONE INT<{hits[0]}> OK")
+            parts.append(f"ACT DONE INT<{hits[0]}> YES")
     return _seq(*parts), None
 
 

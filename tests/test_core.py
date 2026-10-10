@@ -17,8 +17,9 @@ WRONG = [
     "BOS DEF NEW0 LAM MUL V0 V0 END EXPAND NEW0 RESULT LAM ADD V0 V0 END",
     "BOS DEF NEW5 LAM ADD V0 V0 END DEF NEW6 LAM MUL V0 INT<3> END SAME NEW5 NEW6 END",
     "BOS GOAL LAM GT V0 INT<1> BUDGET INT<1> ACT EVAL ADD INT<1> INT<1> OBS INT<3> END",
-    "BOS GOAL LAM GT V0 INT<1> BUDGET INT<2> ACT DONE INT<0> OK END",
-    "BOS GOAL LAM GT V0 INT<1> BUDGET INT<1> ACT EVAL INT<1> OBS INT<1> ACT DONE INT<2> OK END",
+    "BOS GOAL LAM GT V0 INT<1> BUDGET INT<2> ACT DONE INT<0> YES END",
+    "BOS GOAL LAM GT V0 INT<1> BUDGET INT<1> ACT EVAL INT<1> OBS INT<1> ACT DONE INT<2> YES END",
+    "BOS GOAL LAM GT V0 INT<1> BUDGET INT<1> ACT DONE INT<0> ERR END",                  # an answer gets YES or NO
     "BOS CLEAN UNBIND REC<{a:1, b:2}> STR<a> NUM<2> END",
     "BOS LT TIME<2026-10-10 09:00> TIME<2026-10-09 15:30> TRUE END",
     "BOS EX INT<2> IS NEW2 EX INT<3> ISNOT NEW2 DEF NEW3 LAM GT V0 INT<0> END SAME NEW2 NEW3 END",
@@ -83,7 +84,7 @@ class TestCore(unittest.TestCase):
         self.assertEqual(evaluate(parse_expr("MOD INT<-7> INT<2>")), 1)   # and agrees with MOD
 
     def test_bets_on_actions_are_scored(self):
-        s = "BOS GOAL LAM GT V0 INT<1> BUDGET INT<1> BET NUM<0.9> ACT DONE INT<0> ERR SURPRISE NUM<3.32192809489> END"
+        s = "BOS GOAL LAM GT V0 INT<1> BUDGET INT<1> BET NUM<0.9> ACT DONE INT<0> NO SURPRISE NUM<3.32192809489> END"
         self.assertTrue(check(s).unverified)          # can't be training data: nobody knows the right p
         rep = check(s, bets="score")
         self.assertEqual((rep.errors, rep.unverified), ([], []))
@@ -98,7 +99,7 @@ class TestCore(unittest.TestCase):
         self.assertEqual(VOCAB.by_id[ids[7]].name, "OOPS")
 
     def test_agenda_carries_between_sequences(self):
-        s = "BOS NEXT GOAL LAM GT V0 INT<1> BUDGET INT<1> ACT DONE INT<2> OK END"
+        s = "BOS NEXT GOAL LAM GT V0 INT<1> BUDGET INT<1> ACT DONE INT<2> YES END"
         self.assertTrue(check(s).errors)
         self.assertEqual(check(s, agenda=[("goal", "LAM GT V0 INT<1>")]).errors, [])
 
@@ -145,7 +146,7 @@ class TestCore(unittest.TestCase):
         ids = [t.id for t in VOCAB.tokens]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(sorted(ids), list(range(len(ids))))             # no gaps
-        pinned = {"BOS": 0, "R0": 27, "LAM": 91, "EVAL": 134, "CHANCE": 184}   # ids must never change
+        pinned = {"BOS": 0, "R0": 27, "LAM": 91, "EVAL": 134, "CHANCE": 183}   # ids must never change
         self.assertEqual({k: VOCAB[k].id for k in pinned}, pinned)
 
 

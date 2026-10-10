@@ -208,7 +208,7 @@ Besides being training data, `SAME`/`DIFF` facts are mined to produce the relati
 
 ## Group 6: episodes
 
-`GOAL ACT OBS OK ERR BUDGET DONE`
+`GOAL BUDGET ACT OBS DONE ERR`
 
 Before any Lab actions exist, the environment is just the interpreter. The model acts by asking for evaluations, sees results, and submits an answer with `DONE x`. This teaches the act → observe → decide loop with a perfect, free checker.
 
@@ -218,7 +218,7 @@ BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩   BUDGET INT⟨4⟩
     ACT EVAL MUL INT⟨6⟩ INT⟨6⟩   OBS INT⟨36⟩   BUDGET INT⟨3⟩
     ACT EVAL MUL INT⟨8⟩ INT⟨8⟩   OBS INT⟨64⟩   BUDGET INT⟨2⟩
     ACT EVAL MUL INT⟨7⟩ INT⟨7⟩   OBS INT⟨49⟩   BUDGET INT⟨1⟩
-    ACT DONE INT⟨7⟩   OK END
+    ACT DONE INT⟨7⟩   YES END
 ```
 
 The same goal, solved better. This is the behavior expert iteration should push toward: one well-chosen action instead of guessing.
@@ -226,14 +226,14 @@ The same goal, solved better. This is the behavior expert iteration should push 
 BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩   BUDGET INT⟨4⟩
     ACT EVAL FILTER LAM EQ MUL V0 V0 INT⟨49⟩ RANGE INT⟨20⟩
     OBS [ INT⟨7⟩ ]   BUDGET INT⟨3⟩
-    ACT DONE INT⟨7⟩   OK END
+    ACT DONE INT⟨7⟩   YES END
 ```
 
 Errors and budget running out:
 ```
 BOS GOAL LAM GT V0 INT⟨100⟩   BUDGET INT⟨2⟩
     ACT EVAL DIV INT⟨1⟩ INT⟨0⟩   ERR   BUDGET INT⟨1⟩
-    ACT DONE INT⟨50⟩   ERR END
+    ACT DONE INT⟨50⟩   NO END
 ```
 Dividing by zero gives `ERR`, and submitting 50 gives `ERR` because it doesn't satisfy the goal.
 
@@ -243,7 +243,7 @@ BOS DEF NEW0 LAM AND GT V0 INT⟨1⟩ EQ LEN FILTER LAM IF GT V0 INT⟨1⟩ EQ I
     GOAL LAM AND APP NEW0 V0 GT V0 INT⟨20⟩   BUDGET INT⟨3⟩
     ACT EVAL FILTER LAM AND APP NEW0 V0 GT V0 INT⟨20⟩ RANGE INT⟨30⟩
     OBS [ INT⟨23⟩ INT⟨29⟩ ]   BUDGET INT⟨2⟩
-    ACT DONE INT⟨23⟩   OK END
+    ACT DONE INT⟨23⟩   YES END
 ```
 `NEW0` is "prime": greater than 1, with no divisor between 2 and itself (integer `DIV` rounds down, and `IF` only evaluates the branch it takes, so there is no division by zero). It's deliberately clunky: a definition this long, recurring often, is exactly what library learning would promote to a permanent token.
 
@@ -326,7 +326,7 @@ Thinking is free and acting costs budget, so try candidates in your head and act
 BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩ BUDGET INT⟨1⟩
     EVAL EQ MUL INT⟨6⟩ INT⟨6⟩ INT⟨49⟩ RESULT FALSE
     EVAL EQ MUL INT⟨7⟩ INT⟨7⟩ INT⟨49⟩ RESULT TRUE
-    ACT DONE INT⟨7⟩ OK END
+    ACT DONE INT⟨7⟩ YES END
 ```
 `COST e STEPS n` says evaluating e takes n interpreter steps, so the model can tell when thinking is getting expensive and paying for an action is cheaper:
 ```
@@ -342,7 +342,7 @@ An idea that isn't a step toward the current goal goes on the agenda, and work c
 ```
 BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩ BUDGET INT⟨1⟩
     QUEUE GOAL LAM EQ MUL V0 V0 INT⟨50⟩
-    ACT DONE INT⟨7⟩ OK
+    ACT DONE INT⟨7⟩ YES
     NEXT GOAL LAM EQ MUL V0 V0 INT⟨50⟩ BUDGET INT⟨1⟩
     ACT EVAL FILTER LAM EQ MUL V0 V0 INT⟨50⟩ RANGE INT⟨10⟩ OBS [ ] END
 ```
@@ -406,7 +406,7 @@ One generator and checker per group, all ordinary code:
 | 3 | random values and comparisons | evaluator (VSA encoders for computed tokens) |
 | 4 | random typed programs, depth-limited | interpreter |
 | 5 | random definitions, uses, example sets drawn from a library of predicates | interpreter, plus equivalence testing on random inputs for `SAME` |
-| 6 | random goals (predicates with a known witness); scripted policies of varying quality for the first trajectories | interpreter; reward = OK within budget |
+| 6 | random goals (predicates with a known witness); scripted policies of varying quality for the first trajectories | interpreter; reward = YES within budget |
 | 10 | random predicates and lists; exact chances, bets on random draws | interpreter, plus the exact chance and surprise for each bet |
 | 11 | correct definitions with one small slip (a constant, a swapped operator, a dropped or extra wrapper); tests that fail, the patch, tests that pass | interpreter applies the patch and reruns the tests |
 | 12 | programs evaluated piece by piece with occasional caught slips; episodes solved by thinking first, paying for a search only when thinking fails; step counts | interpreter, plus exact step counts |

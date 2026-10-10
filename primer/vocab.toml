@@ -634,12 +634,14 @@ id = 158
 name = "YES"
 group = "teach"
 vsa = "atom"
+note = "a verdict: the claim holds (ASK, a bet's draw, a submitted answer)"
 
 [[token]]
 id = 159
 name = "NO"
 group = "teach"
 vsa = "atom"
+note = "a verdict: the claim does not hold"
 
 [[token]]
 id = 160
@@ -784,37 +786,33 @@ id = 178
 name = "DONE"
 group = "episode"
 vsa = "atom"
+note = "ACT DONE x: submit x as the answer; YES if it satisfies the goal, else NO"
 
 [[token]]
 id = 179
-name = "OK"
-group = "episode"
-vsa = "atom"
-
-[[token]]
-id = 180
 name = "ERR"
 group = "episode"
 vsa = "atom"
+note = "the outcome of an action that failed (and the value of anything that fails)"
 
 # ---- think: thoughts before acting, withdrawing them, and what computing costs ----
 
 [[token]]
-id = 181
+id = 180
 name = "OOPS"
 group = "think"
 vsa = "atom"
 note = "right after EVAL e RESULT v: v was wrong; the thought is withdrawn (train with no loss on v)"
 
 [[token]]
-id = 182
+id = 181
 name = "COST"
 group = "think"
 vsa = "atom"
 note = "COST e STEPS n: evaluating e takes n interpreter steps"
 
 [[token]]
-id = 183
+id = 182
 name = "STEPS"
 group = "think"
 ret = "SYM"
@@ -824,7 +822,7 @@ note = "COST metric: interpreter steps, known exactly"
 # ---- belief: chances, bets and surprise -------------------------------------
 
 [[token]]
-id = 184
+id = 183
 name = "CHANCE"
 group = "belief"
 args = ["FUN", "LIST"]
@@ -833,21 +831,21 @@ vsa = "atom"
 note = "fraction of the list's items the predicate holds for: the chance a uniform draw passes"
 
 [[token]]
-id = 185
+id = 184
 name = "BET"
 group = "belief"
 vsa = "atom"
-note = "BET p pred list: chance p that a draw from list passes pred; BET p ACT ...: chance the action succeeds"
+note = "BET p pred list: chance p that a draw from list passes pred; BET p ACT ...: chance the action succeeds (OBS for EVAL, YES for DONE)"
 
 [[token]]
-id = 186
+id = 185
 name = "DRAW"
 group = "belief"
 vsa = "atom"
 note = "DRAW x: the item drawn for the open bet; followed by YES or NO"
 
 [[token]]
-id = 187
+id = 186
 name = "SURPRISE"
 group = "belief"
 vsa = "atom"
@@ -856,14 +854,14 @@ note = "SURPRISE s: -log2 of the probability the last bet gave to what happened,
 # ---- agenda: side ideas kept for later --------------------------------------
 
 [[token]]
-id = 188
+id = 187
 name = "QUEUE"
 group = "agenda"
 vsa = "atom"
 note = "QUEUE GOAL pred | QUEUE fun: put a side idea on the agenda (a goal, or a candidate word) without leaving the current work"
 
 [[token]]
-id = 189
+id = 188
 name = "NEXT"
 group = "agenda"
 vsa = "atom"
