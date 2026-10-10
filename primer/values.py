@@ -178,7 +178,8 @@ def _fmt_data(v):
 
 
 def _fmt_num(x):
-    return repr(int(x)) if x.is_integer() and abs(x) < 1e15 else repr(x)
+    # 12 significant digits: well inside REL_TOL, and 0.1 + 0.2 prints as 0.3.
+    return format(x, ".12g")
 
 
 def show(v):
