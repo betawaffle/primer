@@ -22,6 +22,13 @@ WRONG = [
     "BOS LT TIME<2026-10-10 09:00> TIME<2026-10-09 15:30> TRUE END",
     "BOS EX INT<2> IS NEW2 EX INT<3> ISNOT NEW2 DEF NEW3 LAM GT V0 INT<0> END SAME NEW2 NEW3 END",
     "BOS [ ] [ END",
+    "BOS CHANCE LAM GT V0 INT<12> RANGE INT<20> NUM<0.4> END",
+    "BOS BET NUM<0.5> LAM GT V0 INT<12> RANGE INT<20> DRAW INT<15> YES END",          # wrong chance
+    "BOS BET NUM<0.35> LAM GT V0 INT<12> RANGE INT<20> DRAW INT<15> NO END",          # wrong outcome
+    "BOS BET NUM<0.35> LAM GT V0 INT<12> RANGE INT<20> DRAW INT<25> YES END",         # not in the list
+    "BOS BET NUM<0.35> LAM GT V0 INT<12> RANGE INT<20> DRAW INT<3> NO SURPRISE NUM<1.5> END",
+    "BOS BET NUM<0.35> LAM GT V0 INT<12> RANGE INT<20> END",                          # never settled
+    "BOS BET NUM<1.5> LAM GT V0 INT<12> RANGE INT<20> DRAW INT<3> NO END",
 ]
 
 
@@ -45,6 +52,14 @@ class TestCore(unittest.TestCase):
                          18446744073709551557 ** 2)
         self.assertEqual(evaluate(parse_expr("DIV INT<-7> INT<2>")), -4)  # rounds down
 
+    def test_bets_on_actions_are_scored(self):
+        s = "BOS GOAL LAM GT V0 INT<1> BUDGET INT<1> BET NUM<0.9> ACT DONE INT<0> ERR SURPRISE NUM<3.32192809489> END"
+        self.assertTrue(check(s).unverified)          # can't be training data: nobody knows the right p
+        rep = check(s, bets="score")
+        self.assertEqual((rep.errors, rep.unverified), ([], []))
+        self.assertEqual([(x["p"], x["outcome"]) for x in rep.scores], [(0.9, False)])
+        self.assertAlmostEqual(rep.scores[0]["bits"], 3.32192809489)
+
     def test_text_roundtrip(self):
         for src in ["ADD NUM<0.5> INT<3>", "MAP LAM MUL V0 V0 [ INT<1> INT<2> ]",
                     "FIELD REC<{a:1, b:x}> STR<b>", "LET INT<2> LET INT<10> SUB V0 V1"]:
@@ -60,7 +75,7 @@ class TestCore(unittest.TestCase):
     def test_ids_are_unique_and_stable(self):
         ids = [t.id for t in VOCAB.tokens]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual((VOCAB["BOS"].id, VOCAB["R0"].id, VOCAB["R63"].id), (0, 25, 88))  # pinned: ids must never change
+        self.assertEqual((VOCAB["BOS"].id, VOCAB["R0"].id, VOCAB["R63"].id, VOCAB["CHANCE"].id), (0, 25, 88, 163))  # pinned: ids must never change
 
 
 if __name__ == "__main__":

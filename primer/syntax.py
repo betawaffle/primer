@@ -118,7 +118,7 @@ class Parser:
             return ("lam", self.expr())
         if n == "LET":
             return ("let", self.expr(), self.expr())
-        if tok.group == 4 or n in ("NOT", "AND", "OR", "IMPLIES", "EQ", "NEQ", "IF", "LT", "GT"):
+        if tok.args:  # an operator: fixed arity from the type table
             return ("op", n, [self.expr() for _ in range(tok.arity)])
         raise SyntaxErr(f"{t} cannot start an expression")
 

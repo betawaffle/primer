@@ -13,8 +13,11 @@ Items:
   ASK x word RESULT YES|NO
   SAME a b | DIFF a b
   GOAL pred | BUDGET n | ACT EVAL expr | ACT DONE x | OBS value | OK | ERR
+  BET p pred list  DRAW x  YES|NO  [SURPRISE s]
+  BET p ACT ...    (the action's outcome settles the bet)  [SURPRISE s]
 """
 import itertools
+import math
 from dataclasses import dataclass, field
 
 from .interp import Context, apply, evaluate, remember_literals
@@ -29,6 +32,7 @@ class Report:
     errors: list = field(default_factory=list)
     unverified: list = field(default_factory=list)
     items: int = 0
+    scores: list = field(default_factory=list)   # one {p, outcome, bits} per settled bet
 
     @property
     def ok(self):
@@ -95,6 +99,19 @@ def parse_items(toks):
         elif n in ("OK", "ERR"):
             p.next()
             items.append((n.lower(),))
+        elif n == "BET":
+            p.next()
+            prob = p.expr()
+            if p.at("ACT"):
+                items.append(("bet", prob, None, None))
+            else:
+                items.append(("bet", prob, p.expr(), p.expr()))
+        elif n in ("DRAW", "SURPRISE"):
+            p.next()
+            items.append((n.lower(), p.expr()))
+        elif n in ("YES", "NO"):
+            p.next()
+            items.append(("outcome", n == "YES"))
         else:
             e = p.expr()
             if is_literal(e):
@@ -148,9 +165,19 @@ def compare_functions(f, g, ctx):
     return agree, None
 
 
-def check(text, truth=None):
+def _bits(p, outcome):
+    q = p if outcome else 1 - p
+    return -math.log2(q) if q > 0 else math.inf
+
+
+def check(text, truth=None, bets="exact"):
     """Check one sequence. truth maps an example-defined word to the text of
-    a predicate that defines it, for checking ASK answers about it."""
+    a predicate that defines it, for checking ASK answers about it.
+
+    bets="exact" (training data) requires every draw bet to state the exact
+    chance; a bet on the sequence's own action can't be checked that way and
+    is reported as unverified. bets="score" (grading a model) accepts any
+    probability and only scores it: see Report.scores."""
     rep = Report(text)
     try:
         toks = tokenize(text)
@@ -181,12 +208,23 @@ def check(text, truth=None):
 
     defs, deferred, links = {}, [], {}
     ep = {"goal": None, "budget": None, "pending": None}
+    bet = {"open": None, "settled": None}
 
     def err(msg):
         rep.errors.append(msg)
 
     def value_of(node):
         return evaluate(node, ctx)
+
+    def settle(outcome):
+        b, bet["open"] = bet["open"], None
+        b["outcome"], b["bits"] = outcome, _bits(b["p"], outcome)
+        rep.scores.append({"p": b["p"], "outcome": outcome, "bits": b["bits"]})
+        bet["settled"] = b
+
+    def action_bet():
+        b = bet["open"]
+        return b if b and b["action"] else None
 
     for idx, it in enumerate(items):
         tag = it[0]
@@ -326,6 +364,8 @@ def check(text, truth=None):
                 err(f"{where}: the action failed, so the outcome is ERR")
             elif not valeq(pend[1], want):
                 err(f"{where}: observation should be {show(pend[1])}, sequence says {show(want)}")
+            if pend and pend[0] == "eval" and action_bet():
+                settle(True)
         elif tag in ("ok", "err"):
             pend, ep["pending"] = ep["pending"], None
             if not pend:
@@ -335,9 +375,63 @@ def check(text, truth=None):
                     err(f"{where}: an evaluation is followed by OBS value, or ERR if it failed")
             elif pend[1] != (tag == "ok"):
                 err(f"{where}: DONE answer {'satisfies' if pend[1] else 'does not satisfy'} the goal")
+            if pend and action_bet():
+                settle(tag == "ok")
+
+        elif tag == "bet":
+            _, prob, pred, lst = it
+            if bet["open"]:
+                err(f"{where}: the previous bet is not settled yet")
+            p = value_of(prob)
+            if kind(p) not in ("INT", "NUM") or not 0 <= p <= 1:
+                err(f"{where}: a bet is a probability from 0 to 1, got {show(p)}")
+                bet["open"] = None
+                continue
+            b = {"p": float(p), "action": pred is None, "drawn": False, "truth": None}
+            if pred is None:
+                if bets == "exact":
+                    rep.unverified.append(f"{where}: a bet on an action can be scored, not checked")
+            else:
+                f, xs = value_of(pred), value_of(lst)
+                c = value_of(("op", "CHANCE", [("lit", f), ("lit", xs)])) if isinstance(f, Closure) else ERR
+                if c is ERR:
+                    err(f"{where}: BET needs a predicate and a non-empty list")
+                    continue
+                if bets == "exact" and abs(c - b["p"]) > 1e-9:
+                    err(f"{where}: the chance is {show(c)}, sequence bets {show(p)}")
+                b.update(f=f, xs=xs)
+            bet["open"] = b
+        elif tag == "draw":
+            b = bet["open"]
+            if not b or b["action"] or b["drawn"]:
+                err(f"{where}: DRAW needs an open BET on a list")
+                continue
+            x = value_of(it[1])
+            if not any(valeq(x, y) for y in b["xs"]):
+                err(f"{where}: {show(x)} is not in the bet's list")
+            b["drawn"], b["truth"] = True, _call(b["f"], (x,), ctx)
+        elif tag == "outcome":
+            b = bet["open"]
+            if not b or not b["drawn"]:
+                err(f"{where}: YES/NO needs a DRAW first")
+                continue
+            if b["truth"] is not it[1]:
+                err(f"{where}: the draw {'passes' if b['truth'] is True else 'fails'} the bet's predicate")
+            settle(it[1])
+        elif tag == "surprise":
+            b, bet["settled"] = bet["settled"], None
+            s = value_of(it[1])
+            if not b:
+                err(f"{where}: SURPRISE follows a settled bet")
+            elif math.isinf(b["bits"]):
+                err(f"{where}: the bet gave what happened no chance at all")
+            elif kind(s) != "NUM" or abs(s - b["bits"]) > 1e-9 * max(1.0, b["bits"]):
+                err(f"{where}: surprise is {show(b['bits'])} bits, sequence says {show(s)}")
 
     if ep["pending"]:
         err("sequence ends before the last action's outcome")
+    if bet["open"]:
+        err("sequence ends before the last bet is settled")
 
     # Resolve ASKs about example-defined words.
     for name, src in (truth or {}).items():
