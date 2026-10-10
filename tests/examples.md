@@ -334,6 +334,27 @@ BOS COST ADD INT⟨1⟩ INT⟨2⟩ INT⟨3⟩
     COST FILTER LAM GT V0 INT⟨3⟩ RANGE INT⟨10⟩ INT⟨44⟩ END
 ```
 
+## Group 13: agenda
+
+`QUEUE NEXT`
+
+An idea that isn't a step toward the current goal goes on the agenda, and work carries on. `NEXT` takes up the oldest item later:
+```
+BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩ BUDGET INT⟨1⟩
+    QUEUE GOAL LAM EQ MUL V0 V0 INT⟨50⟩
+    ACT DONE INT⟨7⟩ OK
+    NEXT GOAL LAM EQ MUL V0 V0 INT⟨50⟩ BUDGET INT⟨1⟩
+    ACT EVAL FILTER LAM EQ MUL V0 V0 INT⟨50⟩ RANGE INT⟨10⟩ OBS [ ] END
+```
+A chunk that keeps coming up is queued as a candidate word; taking it up means defining it:
+```
+BOS EVAL APP LAM MUL V0 V0 INT⟨3⟩ RESULT INT⟨9⟩
+    EVAL APP LAM MUL V0 V0 INT⟨4⟩ RESULT INT⟨16⟩
+    QUEUE LAM MUL V0 V0
+    NEXT DEF NEW3 LAM MUL V0 V0 END
+    EVAL APP NEW3 INT⟨5⟩ RESULT INT⟨25⟩ END
+```
+
 ---
 
 ## What generates this
@@ -351,5 +372,6 @@ One generator and checker per group, all ordinary code:
 | 10 | random predicates and lists; exact chances, bets on random draws | interpreter, plus the exact chance and surprise for each bet |
 | 11 | correct definitions with one small slip (a constant, a swapped operator, a dropped or extra wrapper); tests that fail, the patch, tests that pass | interpreter applies the patch and reruns the tests |
 | 12 | programs evaluated piece by piece with occasional caught slips; episodes solved by thinking first, paying for a search only when thinking fails; step counts | interpreter, plus exact step counts |
+| 13 | solved episodes that queue a nearby goal (one constant changed), sometimes taking it up; repeated chunks queued as candidate words, sometimes defined | interpreter; NEXT must take the oldest item |
 
 The curriculum mixes earlier groups back in as later ones are added, so foundations keep getting rehearsed.

@@ -702,8 +702,86 @@ def group12(r):
     return r.choices([_work, _think_then_act, _costs], [4, 3, 3])[0](r)
 
 
+# ---- group 13: agenda ------------------------------------------------------------------
+
+def _variant(r, goal):
+    """The same goal with one constant nudged: the natural "what about ...?" idea."""
+    spots = [p for p, n in subtrees(goal) if n[0] == "lit" and type(n[1]) is int]
+    if not spots:
+        raise Retry
+    k = dict(subtrees(goal))[r.choice(spots)][1]
+    k2 = r.choice([k + 1, k + 2, k - 1, k * 2]) if k else r.randint(1, 5)
+    new = goal
+    for path in spots:              # every copy of the constant, so "divisible by m" stays one m
+        if dict(subtrees(new))[path][1] == k:
+            new = replace(new, path, lit(k2))
+    if unparse(new) == unparse(goal):
+        raise Retry
+    return new
+
+
+def _solve_by_filter(r, goal, parts, n, budget):
+    """ACT EVAL a search over RANGE n, then submit the first hit if there is one."""
+    search = op("FILTER", goal, op("RANGE", lit(n)))
+    found = _eval(search)
+    parts.append(f"ACT EVAL {unparse(search)} OBS {show(found)}")
+    parts.append(f"BUDGET INT<{budget - 1}>")
+    return found
+
+
+def _queue_goal(r):
+    src, n = _goal(r)
+    goal = parse_expr(src)
+    var = _variant(r, goal)
+    parts = [f"GOAL {src}", "BUDGET INT<2>"]
+    found = _solve_by_filter(r, goal, parts, n, 2)
+    if not found:
+        raise Retry
+    idea = f"QUEUE GOAL {unparse(var)}"
+    if r.random() < 0.5:
+        parts.append(idea)                       # the idea comes mid-task
+        parts.append(f"ACT DONE INT<{found[0]}> OK")
+    else:
+        parts.append(f"ACT DONE INT<{found[0]}> OK")
+        parts.append(idea)
+    if r.random() < 0.6:                         # take it up
+        parts += ["NEXT", f"GOAL {unparse(var)}", "BUDGET INT<2>"]
+        hits = _solve_by_filter(r, var, parts, r.randint(n, n + 15), 2)
+        if hits:
+            parts.append(f"ACT DONE INT<{hits[0]}> OK")
+    return _seq(*parts), None
+
+
+def _queue_word(r):
+    """A chunk that keeps coming up while working becomes a candidate word."""
+    ctx = Context(fuel=20_000)
+    body = _unary(r, depth=r.randint(1, 2))
+    fun = ("lam", body)
+    xs = r.sample(range(-3, 12), r.randint(2, 3))
+    calls = [op("APP", fun, lit(x)) for x in xs]
+    total = calls[0]
+    for c in calls[1:]:
+        total = op("ADD", total, c)
+    parts = [f"EVAL {unparse(c)} RESULT {show(_eval(c, ctx))}" for c in calls]
+    parts.append(f"EVAL {unparse(total)} RESULT {show(_eval(total, ctx))}")
+    parts.append(f"QUEUE {unparse(fun)}")
+    if r.random() < 0.6:
+        name = f"NEW{r.randrange(16)}"
+        ctx.words[name] = _eval_fun(fun, ctx, name)
+        parts += ["NEXT", f"DEF {name} {unparse(fun)} END"]
+        call = op("APP", ("word", name), lit(r.randint(-3, 12)))
+        parts.append(f"EVAL {unparse(call)} RESULT {show(_eval(call, ctx))}")
+    return _seq(*parts), None
+
+
+def group13(r):
+    """Side ideas: queue a related goal or a candidate word without leaving the
+    current work, and sometimes take it up with NEXT."""
+    return r.choices([_queue_goal, _queue_word], [3, 2])[0](r)
+
+
 GROUPS = {1: group1, 2: group2, 3: group3, 4: group4, 5: group5, 6: group6, 10: group10, 11: group11,
-          12: group12}
+          12: group12, 13: group13}
 
 
 def generate(r, group, max_tries=200):

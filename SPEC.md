@@ -1,6 +1,6 @@
 # primer language spec (v0)
 
-Covers vocabulary groups 1–6 (syntax, logic, values, computation, teaching frames and episodes) group 10 (beliefs), group 11 (edits) and group 12 (thinking). Groups 7–9 are reserved for the Lab v0 actions and schema fields, which come later.
+Covers vocabulary groups 1–6 (syntax, logic, values, computation, teaching frames and episodes) group 10 (beliefs), group 11 (edits), group 12 (thinking) and group 13 (agenda). Groups 7–9 are reserved for the Lab v0 actions and schema fields, which come later.
 
 ## Source of truth
 
@@ -74,6 +74,8 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 | `PATCH word edit… END` | changes a defined word's definition in place (see Edits); later items use the new definition |
 | `EVAL expr RESULT v OOPS` | a withdrawn thought: v must be wrong; the item is otherwise ignored |
 | `COST expr n` | evaluating expr takes exactly n interpreter steps (at most 20,000) |
+| `QUEUE GOAL pred` / `QUEUE fun` | puts a side idea on the agenda: a goal, or a candidate word; the current work carries on |
+| `NEXT` | takes the oldest agenda item; the next item must be its `GOAL`, or a `DEF` of the queued function. Ends the current episode |
 | `SURPRISE s` | right after a bet is settled: s = −log2 of the probability the bet gave to what happened, in bits |
 
 **Holes:** a sequence may contain one `HOLE`. The tokens between its last two `END`s are the filler; the checker puts them in place of the hole and checks the result, so any correct filler passes.
@@ -93,6 +95,10 @@ Inside `PATCH word … END`, each edit is `REPLACE old new` (the subexpression o
 A thought is an `EVAL … RESULT` the model writes before acting: free, unlike an `ACT`, and graded like any other claim. `OOPS` right after one withdraws it, and the checker requires the withdrawn value to really be wrong. Generated rows with an `OOPS` carry `"no_loss": [[start, end], …]`, token ranges (from `check.retracted_spans`) holding the withdrawn values; training should put no loss on them, so the model learns to notice a slip and correct it without learning to make one.
 
 `COST expr n` counts interpreter steps: one per expression node evaluated and one per function application, the same units as fuel. It is checked exactly, so it changes if the interpreter's step counting changes; that is a breaking change like an encoder change.
+
+## Agenda
+
+The agenda is a first-in, first-out list of side ideas: goals that aren't steps toward the current one, and chunks worth making into words. Within a sequence the checker keeps it; across sequences the harness does (on disk, not in the weights), and `check(text, agenda=[("goal" | "word", text), …])` checks a sequence that starts with `NEXT` against what was queued before. Whether an idea was worth queuing can't be checked inside a sequence; it is scored later, by how much solving it teaches (the learning-progress bandit), which is how the model learns which ideas to write down.
 
 ## Serialization
 
@@ -115,6 +121,7 @@ A thought is an `EVAL … RESULT` the model writes before acting: free, unlike a
 | 10 | exact `CHANCE` items; rounds of `BET`/`DRAW`/outcome/`SURPRISE` on a predicate (sometimes a defined word) and lists; holes for the probability. Certain chances (0 and 1) are kept rare |
 | 11 | repairs: a definition with one small slip, tests that fail, the `PATCH`, tests that pass (sometimes with the fix as a hole); plain edits followed by `EXPAND` |
 | 12 | programs evaluated piece by piece, bottom-up, with an occasional slip caught by `OOPS`; episodes solved by thinking first and acting once, paying for a search (often after its `COST`) only when thinking fails; `COST` items for random programs |
+| 13 | solved episodes that queue a nearby goal (one constant changed), mid-task or after, sometimes taking it up with `NEXT`; a chunk used repeatedly while working, queued as a candidate word and sometimes defined |
 
 Every answer is computed by the interpreter, so a generator can choose a bad question but never a wrong answer, and every sequence is run through the checker again before it is written. No sequence appears twice in a run, across all shards; the run tops itself up to the requested count. Random programs keep to what a person would write: every `LET` and every function body uses the variable it binds and isn't just that variable, and `IF` never tests a constant. Words are assigned random `NEW` numbers per sequence so no number gets a fixed meaning.
 

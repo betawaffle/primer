@@ -658,3 +658,19 @@ name = "COST"
 group = 12
 vsa = "atom"
 note = "COST e n: evaluating e takes n interpreter steps"
+
+# ---- group 13: agenda -------------------------------------------------------
+
+[[token]]
+id = 173
+name = "QUEUE"
+group = 13
+vsa = "atom"
+note = "QUEUE GOAL pred | QUEUE fun: put a side idea on the agenda (a goal, or a candidate word) without leaving the current work"
+
+[[token]]
+id = 174
+name = "NEXT"
+group = 13
+vsa = "atom"
+note = "NEXT: start on the oldest agenda item; the next item must be its GOAL or a DEF of its word"
