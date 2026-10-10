@@ -875,7 +875,7 @@ def _parts(r):
 
 
 def gen_quote(r):
-    """Talking about expressions instead of evaluating them: QUOTE and WORD,
+    """Talking about expressions instead of evaluating them: QUOTE and TOK,
     SPAN back into the sequence, KIND (parts of speech), and PART."""
     return r.choices([_quote_vs_use, _kinds, _spans, _parts], [2, 3, 3, 2])[0](r)
 

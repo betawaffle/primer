@@ -21,7 +21,7 @@ Items:
   QUEUE GOAL pred | QUEUE fun      put a side idea on the agenda
   NEXT  GOAL pred | NEXT DEF word fun END   take up the oldest agenda item
 
-QUOTE, WORD, SPAN, PART and KIND are ordinary expressions; the checker only
+QUOTE, TOK, SPAN, PART and KIND are ordinary expressions; the checker only
 tells SPAN where it is, so it can point back at earlier tokens.
 """
 import itertools

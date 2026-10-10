@@ -48,9 +48,9 @@ WRONG = [
     "BOS QUEUE GOAL LAM GT V0 INT<1> QUEUE GOAL LAM LT V0 INT<1> NEXT GOAL LAM LT V0 INT<1> END",  # oldest first
     "BOS QUOTE ADD INT<2> END",                                                         # ADD is owed two arguments
     "BOS EQ QUOTE ADD INT<2> INT<3> INT<5> TRUE END",                                   # a quote is not its value
-    "BOS KIND WORD LT VERB END",                                                        # LT tests: ADJ
+    "BOS KIND TOK LT VERB END",                                                        # LT tests: ADJ
     "BOS SPAN INT<1> INT<3> QUOTE SPAN INT<1> INT<3> END",                              # can't point at itself
-    "BOS ADD INT<2> MUL INT<3> INT<4> INT<14> SPAN INT<2> INT<3> WORD MUL END",         # not one expression
+    "BOS ADD INT<2> MUL INT<3> INT<4> INT<14> SPAN INT<2> INT<3> TOK MUL END",         # not one expression
     "BOS PART NOT TRUE END",                                                            # needs two arguments
     "BOS SAME PART SUB INT<10> LAM SUB V0 INT<10> END",                                 # the first argument is filled
 ]
@@ -103,15 +103,15 @@ class TestCore(unittest.TestCase):
         self.assertEqual(check(s, agenda=[("goal", "LAM GT V0 INT<1>")]).errors, [])
 
     def test_quotes(self):
-        self.assertEqual(unparse(parse_expr("WORD TRUE")), "QUOTE TRUE")   # one canonical form
-        self.assertEqual(unparse(parse_expr("WORD ADD")), "WORD ADD")
+        self.assertEqual(unparse(parse_expr("TOK TRUE")), "QUOTE TRUE")   # one canonical form
+        self.assertEqual(unparse(parse_expr("TOK ADD")), "TOK ADD")
         self.assertEqual(unparse(evaluate(parse_expr("PART IF TRUE")).body), "LAM IF TRUE V1 V0")
         self.assertIs(evaluate(parse_expr("SPAN INT<0> INT<0>")), ERR)   # SPAN only means something in a sequence
 
     def test_text_roundtrip(self):
         for src in ["ADD NUM<0.5> INT<3>", "MAP LAM MUL V0 V0 [ INT<1> INT<2> ]",
                     "FIELD REC<{a:1, b:x}> STR<b>", "LET INT<2> LET INT<10> SUB V0 V1",
-                    "KIND QUOTE ADD INT<2> INT<3>", "APP APP PART IF TRUE INT<1> INT<2>", "QUOTE QUOTE WORD ADD"]:
+                    "KIND QUOTE ADD INT<2> INT<3>", "APP APP PART IF TRUE INT<1> INT<2>", "QUOTE QUOTE TOK ADD"]:
             self.assertEqual(unparse(parse_expr(unparse(parse_expr(src)))), unparse(parse_expr(src)))
 
     def test_ids_roundtrip(self):
@@ -123,7 +123,7 @@ class TestCore(unittest.TestCase):
 
     def test_every_value_kind_has_a_vector(self):
         for src in ["INT<5>", "NUM<0.5>", "STR<a>", "TIME<2026-10-09 15:30>", "REC<{a:1}>", "[ INT<1> ]",
-                    "NONE", "TRUE", "QUOTE ADD INT<1> INT<2>", "KIND WORD ADD"]:
+                    "NONE", "TRUE", "QUOTE ADD INT<1> INT<2>", "KIND TOK ADD"]:
             with self.subTest(src):
                 self.assertTrue(evaluate(parse_expr(f"EQ CLEAN BIND STR<k> {src} CLEAN BIND STR<k> {src}")))
         self.assertGreater(evaluate(parse_expr("SIM TIME<2026-10-09 15:30> TIME<2026-10-16 15:30>")), 0.5)

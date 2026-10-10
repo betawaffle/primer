@@ -666,12 +666,12 @@ note = "QUOTE x: the expression x as data, not evaluated. x is exactly one compl
 
 [[token]]
 id = 163
-name = "WORD"
+name = "TOK"
 group = "quote"
 args = ["TOKEN"]
 ret = "EXPR"
 vsa = "atom"
-note = "WORD t: the single token t as data, without its arguments (WORD ADD is the word, QUOTE ADD x y an expression)"
+note = "TOK t: the single token t as data, without its arguments (TOK ADD is the token, QUOTE ADD x y an expression)"
 
 [[token]]
 id = 164
