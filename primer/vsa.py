@@ -129,6 +129,14 @@ def dec_num(v):
 
 _EPOCH = dt.datetime(1970, 1, 1)
 _TB = D // 4
+_W_TIME = [  # absolute (~10 days), weekly, yearly, daily rhythms
+    _rng("freq:t:abs").uniform(-np.pi, np.pi, _TB) / 10,
+    2 * np.pi * _rng("freq:t:week").choice([-2, -1, 1, 2], _TB) / 7,
+    2 * np.pi * _rng("freq:t:year").choice([-1, 1], _TB) / 365.2425,
+    2 * np.pi * _rng("freq:t:day").choice([-3, -2, -1, 1, 2, 3], _TB),
+]
+
+
 def enc_time(t):
     days = (t - _EPOCH).total_seconds() / 86400
     return bind(atom("time"), np.concatenate([_fpe(w, days) for w in _W_TIME]))

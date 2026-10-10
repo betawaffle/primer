@@ -9,7 +9,7 @@ AST nodes are tuples:
   ("op", name, [args]) ("lam", body) ("let", value, body)
   ("list", [items]) ("rec", [k1, v1, k2, v2, ...]) ("hole",)
   ("part", "ADD", arg)   PART: an operator with its first argument filled in
-QUOTE x and WORD t parse straight to ("lit", Quote): a quote is already a value.
+QUOTE x and TOK t parse straight to ("lit", Quote): a quote is already a value.
 """
 import re
 from dataclasses import dataclass
@@ -18,7 +18,7 @@ from .values import Quote, Sym, parse_payload, show
 from .vocab import VOCAB
 
 PAYLOAD_KINDS = {"NUM", "INT", "STR", "TIME", "REC"}
-SPECIAL_FORMS = {"LAM", "LET", "QUOTE", "WORD", "PART"}   # parsed by hand, not by arity
+SPECIAL_FORMS = {"LAM", "LET", "QUOTE", "TOK", "PART"}   # parsed by hand, not by arity
 MISSING = object()
 _TOKEN = re.compile(r"(\w+)[<⟨](.*?)[>⟩]|(\S+)")
 
@@ -123,7 +123,7 @@ class Parser:
             return ("let", self.expr(), self.expr())
         if n == "QUOTE":   # exactly one complete expression: arities say where it ends
             return ("lit", Quote(unparse(self.expr()), True))
-        if n == "WORD":    # exactly one token, arguments or not
+        if n == "TOK":     # exactly one token, arguments or not
             return ("lit", quote(str(self.next())))
         if n == "PART":
             o = self.next()
@@ -156,6 +156,39 @@ def quote(text):
             return Quote(str(toks[0]), False)   # an operator or frame token on its own
         return Quote(unparse(node), True)
     return Quote(unparse(parse_expr(text)), True)
+
+
+def children(node):
+    """The direct subexpressions of an AST node, in reading order. Every walk
+    over expressions goes through this, so a new node type is added in one place."""
+    tag = node[0]
+    if tag == "op":
+        return list(node[2])
+    if tag in ("list", "rec"):
+        return list(node[1])
+    if tag == "lam":
+        return [node[1]]
+    if tag == "let":
+        return [node[1], node[2]]
+    if tag == "part":
+        return [node[2]]
+    return []
+
+
+def with_children(node, kids):
+    """node with its direct subexpressions replaced by kids (same order as children)."""
+    tag = node[0]
+    if tag == "op":
+        return ("op", node[1], list(kids))
+    if tag in ("list", "rec"):
+        return (tag, list(kids))
+    if tag == "lam":
+        return ("lam", kids[0])
+    if tag == "let":
+        return ("let", kids[0], kids[1])
+    if tag == "part":
+        return ("part", node[1], kids[0])
+    return node
 
 
 def is_literal(node):

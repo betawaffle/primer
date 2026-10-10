@@ -1,6 +1,6 @@
-# Example training data, vocab groups 1–6
+# Example training data, one section per vocabulary group
 
-Companion to [vocab-v0.md](vocab-v0.md). Hand-written samples showing what the generated training data looks like for each group, stopping before the Lab v0 actions. In practice every line comes from a procedural generator, and an interpreter checks it, so the data is unlimited and always correct.
+Companion to [SPEC.md](../SPEC.md). Hand-written samples showing what the generated training data looks like for each group, in bootstrap order, stopping before the Lab v0 actions. In practice every line comes from a procedural generator, and an interpreter checks it, so the data is unlimited and always correct.
 
 ## Reading the notation
 
@@ -8,13 +8,13 @@ Companion to [vocab-v0.md](vocab-v0.md). Hand-written samples showing what the g
 - `NUM⟨3⟩`, `INT⟨7⟩`, `STR⟨fast⟩`, `TIME⟨2026-10-09 15:30⟩` and `REC⟨{a:1, b:2}⟩` are **one token each**. The part in ⟨⟩ is the content its vector is computed from, not extra tokens.
 - `R0⟨…⟩` is a slot token whose content the harness filled in.
 - Every token has a fixed arity, so a parser always knows where an expression ends.
-- **Groups 1–4 use the rule "an expression is followed by its value".** Because arity makes the end of the expression unambiguous, `AND TRUE FALSE FALSE` reads as "AND TRUE FALSE evaluates to FALSE". Group 5 later names this pattern with `EVAL … RESULT`, Lincos style: show the pattern first, name it afterwards.
+- **The first groups use the rule "an expression is followed by its value".** Because arity makes the end of the expression unambiguous, `AND TRUE FALSE FALSE` reads as "AND TRUE FALSE evaluates to FALSE". The teach group later names this pattern with `EVAL … RESULT`, Lincos style: show the pattern first, name it afterwards.
 - `HOLE` format: a sequence containing `HOLE`, then `END`, then the missing piece, then `END`.
-- The loss covers every token the model should predict. In episodes (group 6), the environment's `OBS` contents are excluded from the loss, because the model doesn't write them.
+- The loss covers every token the model should predict. In episodes, the environment's `OBS` contents are excluded from the loss, because the model doesn't write them.
 
 ---
 
-## Group 1: syntax
+## syntax
 
 `BOS END PAD [ ] { } HOLE`
 
@@ -32,9 +32,9 @@ BOS [ ] END PAD PAD PAD PAD
 ```
 The last one is a short sequence padded to batch length. `PAD` is masked out of the loss and never predicted.
 
-## Group 2: logic
+## logic
 
-`TRUE FALSE NOT AND OR IMPLIES EQ NEQ IF` (+ group 1)
+`TRUE FALSE NOT AND OR IMPLIES EQ NEQ IF` (+ syntax)
 
 Truth tables first, then nesting, then holes ("which input makes this true?").
 
@@ -55,13 +55,13 @@ BOS IMPLIES AND TRUE FALSE NOT TRUE TRUE END
 BOS AND HOLE TRUE TRUE END TRUE END
 BOS [ TRUE FALSE ] END
 ```
-`LT`/`GT` wait until group 3, where there are ordered values to compare.
+`LT`/`GT` wait until values, where there are ordered values to compare.
 
-## Group 3: values
+## values
 
-`NUM INT TIME STR REC NONE LT GT`, slots `R0…`. Variables `V0…` and fresh words `NEW0…` need binders, so they first appear in groups 4 and 5.
+`NUM INT TIME STR REC NONE LT GT LE GE`, slots `R0…`. Variables `V0…` and fresh words `NEW0…` need binders, so they first appear with `LAM` (compute) and `DEF` (teach).
 
-Values are introduced through comparisons, which group 2 already gave us. The model learns what the computed vectors mean by seeing how they compare.
+Values are introduced through comparisons, which logic already gave us. The model learns what the computed vectors mean by seeing how they compare.
 
 ```
 BOS EQ NUM⟨2⟩ NUM⟨2⟩ TRUE END
@@ -85,9 +85,9 @@ BOS LT NUM⟨2⟩ HOLE TRUE END NUM⟨7⟩ END
 ```
 Lines 11–13 teach that a record is unordered (key order doesn't matter) while a list is ordered. They also tie `REC` (one computed token) to its spelled-out `{ … }` form. The last line is a hole with many valid answers, and the checker accepts any value greater than 2.
 
-## Group 4: computation
+## compute
 
-`LAM APP LET ADD SUB MUL DIV NEG LOG EXP MIN MAX ABS LEN GET MAP FILTER FOLD SORT TOPK ARGMIN ARGMAX RANGE FIELD WITH KEYS BIND UNBIND BUNDLE SIM CLEAN`, variables `V0…V7`
+`LAM APP LET PART ADD SUB MUL DIV MOD NEG LOG EXP MIN MAX ABS LEN GET CONS CONCAT MAP FILTER FOLD SORT TOPK ARGMIN ARGMAX RANGE FIELD WITH KEYS BIND UNBIND BUNDLE SIM CLEAN`, variables `V0…V7`
 
 Arithmetic:
 ```
@@ -149,7 +149,18 @@ BOS GT SIM REC⟨{a:1, b:2}⟩ REC⟨{a:1, b:3}⟩ SIM REC⟨{a:1, b:2}⟩ REC�
 ```
 `SIM` returns a NUM. The last two lines teach "nearby numbers look similar" and "records sharing fields look similar".
 
-## Group 5: teaching frames
+`PART op x` fills in an operator's first argument, giving a function of the rest. It is how a word becomes a predicate to apply or pass around:
+```
+BOS APP PART SUB INT⟨10⟩ INT⟨3⟩ INT⟨7⟩
+    FILTER PART LT INT⟨2⟩ [ INT⟨1⟩ INT⟨5⟩ INT⟨3⟩ ] [ INT⟨5⟩ INT⟨3⟩ ] END
+```
+Once `SAME` exists (teach), the generator also checks that a `PART` behaves as the `LAM` it abbreviates:
+```
+BOS SAME PART SUB INT⟨10⟩ LAM SUB INT⟨10⟩ V0
+    DIFF PART SUB INT⟨10⟩ LAM SUB V0 INT⟨10⟩ END
+```
+
+## teach
 
 `EVAL RESULT DEF EXPAND EX IS ISNOT ASK YES NO SAME DIFF`, fresh words `NEW0…NEW15`
 
@@ -206,77 +217,38 @@ BOS DIFF STR⟨fast⟩ STR⟨slow⟩ END
 ```
 Besides being training data, `SAME`/`DIFF` facts are mined to produce the relational constraints on the embedding table from Round 2.
 
-## Group 6: episodes
+## quote
 
-`GOAL ACT OBS OK ERR BUDGET DONE`
+`QUOTE TOK SPAN KIND NOUN VERB ADJ FRAME`
 
-Before any Lab actions exist, the environment is just the interpreter. The model acts by asking for evaluations, sees results, and submits an answer with `DONE x`. This teaches the act → observe → decide loop with a perfect, free checker.
+Everything so far is *used*: an expression stands for its value. `QUOTE` *mentions* one instead: it is the expression itself, as data. It takes exactly one complete expression, and the arities say where that ends, so no closing token is needed. Equal values, different expressions:
+```
+BOS EQ ADD INT⟨2⟩ INT⟨3⟩ INT⟨5⟩ TRUE
+    EQ QUOTE ADD INT⟨2⟩ INT⟨3⟩ QUOTE INT⟨5⟩ FALSE
+    EQ QUOTE ADD INT⟨2⟩ INT⟨3⟩ QUOTE ADD INT⟨2⟩ INT⟨3⟩ TRUE END
+```
+`QUOTE ADD` alone is incomplete (ADD is owed two arguments). To mention just the token, `TOK` takes exactly one. `KIND` reads its part of speech off the type table:
+```
+BOS KIND TOK ADD VERB
+    KIND TOK LT ADJ
+    KIND QUOTE INT⟨4⟩ NOUN
+    KIND TOK DEF FRAME
+    KIND QUOTE MAP LAM ADD V0 INT⟨1⟩ [ INT⟨2⟩ ] VERB END
+```
+A defined word is classed by what it is: a function is a verb, a word known from examples (a test) is an adjective:
+```
+BOS DEF NEW1 LAM MUL V0 V0 END KIND TOK NEW1 VERB
+    EX INT⟨4⟩ IS NEW2 KIND TOK NEW2 ADJ END
+```
+`SPAN a b` points back at tokens a to b of this sequence (BOS is 0), so the model can talk about what it already wrote without copying it. The span must be one expression or one token:
+```
+BOS ADD INT⟨2⟩ MUL INT⟨3⟩ INT⟨4⟩ INT⟨14⟩
+    SPAN INT⟨3⟩ INT⟨5⟩ QUOTE MUL INT⟨3⟩ INT⟨4⟩
+    KIND SPAN INT⟨3⟩ INT⟨5⟩ VERB
+    SPAN INT⟨3⟩ INT⟨3⟩ TOK MUL END
+```
 
-Search by trial (`GOAL` is a predicate the answer must satisfy, `BUDGET` is the number of actions left):
-```
-BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩   BUDGET INT⟨4⟩
-    ACT EVAL MUL INT⟨6⟩ INT⟨6⟩   OBS INT⟨36⟩   BUDGET INT⟨3⟩
-    ACT EVAL MUL INT⟨8⟩ INT⟨8⟩   OBS INT⟨64⟩   BUDGET INT⟨2⟩
-    ACT EVAL MUL INT⟨7⟩ INT⟨7⟩   OBS INT⟨49⟩   BUDGET INT⟨1⟩
-    ACT DONE INT⟨7⟩   OK END
-```
-
-The same goal, solved better. This is the behavior expert iteration should push toward: one well-chosen action instead of guessing.
-```
-BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩   BUDGET INT⟨4⟩
-    ACT EVAL FILTER LAM EQ MUL V0 V0 INT⟨49⟩ RANGE INT⟨20⟩
-    OBS [ INT⟨7⟩ ]   BUDGET INT⟨3⟩
-    ACT DONE INT⟨7⟩   OK END
-```
-
-Errors and budget running out:
-```
-BOS GOAL LAM GT V0 INT⟨100⟩   BUDGET INT⟨2⟩
-    ACT EVAL DIV INT⟨1⟩ INT⟨0⟩   ERR   BUDGET INT⟨1⟩
-    ACT DONE INT⟨50⟩   ERR END
-```
-Dividing by zero gives `ERR`, and submitting 50 gives `ERR` because it doesn't satisfy the goal.
-
-Using a word defined earlier in the episode:
-```
-BOS DEF NEW0 LAM AND GT V0 INT⟨1⟩ EQ LEN FILTER LAM IF GT V0 INT⟨1⟩ EQ INT⟨0⟩ SUB V1 MUL V0 DIV V1 V0 FALSE RANGE V0 INT⟨0⟩ END
-    GOAL LAM AND APP NEW0 V0 GT V0 INT⟨20⟩   BUDGET INT⟨3⟩
-    ACT EVAL FILTER LAM AND APP NEW0 V0 GT V0 INT⟨20⟩ RANGE INT⟨30⟩
-    OBS [ INT⟨23⟩ INT⟨29⟩ ]   BUDGET INT⟨2⟩
-    ACT DONE INT⟨23⟩   OK END
-```
-`NEW0` is "prime": greater than 1, with no divisor between 2 and itself (integer `DIV` rounds down, and `IF` only evaluates the branch it takes, so there is no division by zero). It's deliberately clunky: a definition this long, recurring often, is exactly what library learning would promote to a permanent token.
-
-## Group 10: beliefs
-
-`CHANCE BET DRAW SURPRISE` (and `YES`/`NO` as outcomes)
-
-The chance that a uniform draw from a list passes a predicate:
-```
-BOS CHANCE LAM GT V0 INT⟨12⟩ RANGE INT⟨20⟩ NUM⟨0.35⟩ END
-```
-Seven of the twenty numbers 0…19 are above 12.
-
-A bet, the draw, whether it passed, and how surprising that was in bits (−log2 of the probability the bet gave it):
-```
-BOS BET NUM⟨0.35⟩ LAM GT V0 INT⟨12⟩ RANGE INT⟨20⟩
-    DRAW INT⟨15⟩ YES SURPRISE NUM⟨1.51457317283⟩
-    BET NUM⟨0.35⟩ LAM GT V0 INT⟨12⟩ RANGE INT⟨20⟩
-    DRAW INT⟨3⟩ NO SURPRISE NUM⟨0.621488376746⟩ END
-```
-Betting on a word, and a certain outcome costs no surprise:
-```
-BOS DEF NEW4 LAM LT V0 INT⟨5⟩ END
-    BET NUM⟨0.5⟩ NEW4 [ INT⟨1⟩ INT⟨9⟩ ] DRAW INT⟨9⟩ NO SURPRISE NUM⟨1⟩
-    BET NUM⟨1⟩ NEW4 [ INT⟨1⟩ INT⟨2⟩ ] DRAW INT⟨2⟩ YES SURPRISE NUM⟨0⟩ END
-```
-Filling in the probability:
-```
-BOS BET HOLE LAM EQ INT⟨0⟩ SUB V0 MUL INT⟨3⟩ DIV V0 INT⟨3⟩ RANGE INT⟨9⟩ DRAW INT⟨6⟩ YES END NUM⟨0.333333333333⟩ END
-```
-A bet can also come right before an action in an episode (`BET p ACT …`); the action's outcome settles it. Generated data doesn't contain these yet, because only the model can say how sure it is: the checker scores them (`check(text, bets="score")` puts the surprise of every settled bet in `Report.scores`) instead of checking them.
-
-## Group 11: edits
+## edit
 
 `PATCH AT REPLACE WRAP`
 
@@ -309,9 +281,50 @@ BOS DEF NEW1 LAM MUL V0 INT⟨3⟩ END
     EQ MAP NEW1 [ INT⟨1⟩ INT⟨2⟩ ] [ INT⟨2⟩ INT⟨4⟩ ] TRUE END INT⟨2⟩ END
 ```
 
-## Group 12: thinking
+## episode
 
-`OOPS COST`
+`GOAL BUDGET ACT OBS DONE ERR`
+
+Before any Lab actions exist, the environment is just the interpreter. The model acts by asking for evaluations, sees results, and submits an answer with `DONE x`. This teaches the act → observe → decide loop with a perfect, free checker.
+
+Search by trial (`GOAL` is a predicate the answer must satisfy, `BUDGET` is the number of actions left):
+```
+BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩   BUDGET INT⟨4⟩
+    ACT EVAL MUL INT⟨6⟩ INT⟨6⟩   OBS INT⟨36⟩   BUDGET INT⟨3⟩
+    ACT EVAL MUL INT⟨8⟩ INT⟨8⟩   OBS INT⟨64⟩   BUDGET INT⟨2⟩
+    ACT EVAL MUL INT⟨7⟩ INT⟨7⟩   OBS INT⟨49⟩   BUDGET INT⟨1⟩
+    ACT DONE INT⟨7⟩   YES END
+```
+
+The same goal, solved better. This is the behavior expert iteration should push toward: one well-chosen action instead of guessing.
+```
+BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩   BUDGET INT⟨4⟩
+    ACT EVAL FILTER LAM EQ MUL V0 V0 INT⟨49⟩ RANGE INT⟨20⟩
+    OBS [ INT⟨7⟩ ]   BUDGET INT⟨3⟩
+    ACT DONE INT⟨7⟩   YES END
+```
+
+Errors and budget running out:
+```
+BOS GOAL LAM GT V0 INT⟨100⟩   BUDGET INT⟨2⟩
+    ACT EVAL DIV INT⟨1⟩ INT⟨0⟩   ERR   BUDGET INT⟨1⟩
+    ACT DONE INT⟨50⟩   NO END
+```
+Dividing by zero gives `ERR`, and submitting 50 gives `ERR` because it doesn't satisfy the goal.
+
+Using a word defined earlier in the episode:
+```
+BOS DEF NEW0 LAM AND GT V0 INT⟨1⟩ EQ LEN FILTER LAM IF GT V0 INT⟨1⟩ EQ INT⟨0⟩ SUB V1 MUL V0 DIV V1 V0 FALSE RANGE V0 INT⟨0⟩ END
+    GOAL LAM AND APP NEW0 V0 GT V0 INT⟨20⟩   BUDGET INT⟨3⟩
+    ACT EVAL FILTER LAM AND APP NEW0 V0 GT V0 INT⟨20⟩ RANGE INT⟨30⟩
+    OBS [ INT⟨23⟩ INT⟨29⟩ ]   BUDGET INT⟨2⟩
+    ACT DONE INT⟨23⟩   YES END
+```
+`NEW0` is "prime": greater than 1, with no divisor between 2 and itself (integer `DIV` rounds down, and `IF` only evaluates the branch it takes, so there is no division by zero). It's deliberately clunky: a definition this long, recurring often, is exactly what library learning would promote to a permanent token.
+
+## think
+
+`OOPS COST STEPS`
 
 Thinking is writing claims down before acting. Each `EVAL … RESULT` is a thought the checker grades. Showing the work on `ADD MUL 6 7 3`, with a slip caught along the way:
 ```
@@ -326,15 +339,44 @@ Thinking is free and acting costs budget, so try candidates in your head and act
 BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩ BUDGET INT⟨1⟩
     EVAL EQ MUL INT⟨6⟩ INT⟨6⟩ INT⟨49⟩ RESULT FALSE
     EVAL EQ MUL INT⟨7⟩ INT⟨7⟩ INT⟨49⟩ RESULT TRUE
-    ACT DONE INT⟨7⟩ OK END
+    ACT DONE INT⟨7⟩ YES END
 ```
-`COST e n` says evaluating e takes n interpreter steps, so the model can tell when thinking is getting expensive and paying for an action is cheaper:
+`COST e STEPS n` says evaluating e takes n interpreter steps, so the model can tell when thinking is getting expensive and paying for an action is cheaper:
 ```
-BOS COST ADD INT⟨1⟩ INT⟨2⟩ INT⟨3⟩
-    COST FILTER LAM GT V0 INT⟨3⟩ RANGE INT⟨10⟩ INT⟨44⟩ END
+BOS COST ADD INT⟨1⟩ INT⟨2⟩ STEPS INT⟨3⟩
+    COST FILTER LAM GT V0 INT⟨3⟩ RANGE INT⟨10⟩ STEPS INT⟨44⟩ END
 ```
 
-## Group 13: agenda
+## belief
+
+`CHANCE BET DRAW SURPRISE` (and `YES`/`NO` as outcomes)
+
+The chance that a uniform draw from a list passes a predicate:
+```
+BOS CHANCE LAM GT V0 INT⟨12⟩ RANGE INT⟨20⟩ NUM⟨0.35⟩ END
+```
+Seven of the twenty numbers 0…19 are above 12.
+
+A bet, the draw, whether it passed, and how surprising that was in bits (−log2 of the probability the bet gave it):
+```
+BOS BET NUM⟨0.35⟩ LAM GT V0 INT⟨12⟩ RANGE INT⟨20⟩
+    DRAW INT⟨15⟩ YES SURPRISE NUM⟨1.51457317283⟩
+    BET NUM⟨0.35⟩ LAM GT V0 INT⟨12⟩ RANGE INT⟨20⟩
+    DRAW INT⟨3⟩ NO SURPRISE NUM⟨0.621488376746⟩ END
+```
+Betting on a word, and a certain outcome costs no surprise:
+```
+BOS DEF NEW4 LAM LT V0 INT⟨5⟩ END
+    BET NUM⟨0.5⟩ NEW4 [ INT⟨1⟩ INT⟨9⟩ ] DRAW INT⟨9⟩ NO SURPRISE NUM⟨1⟩
+    BET NUM⟨1⟩ NEW4 [ INT⟨1⟩ INT⟨2⟩ ] DRAW INT⟨2⟩ YES SURPRISE NUM⟨0⟩ END
+```
+Filling in the probability:
+```
+BOS BET HOLE LAM EQ INT⟨0⟩ MOD V0 INT⟨3⟩ RANGE INT⟨9⟩ DRAW INT⟨6⟩ YES END NUM⟨0.333333333333⟩ END
+```
+A bet can also come right before an action in an episode (`BET p ACT …`); the action's outcome settles it. Generated data doesn't contain these yet, because only the model can say how sure it is: the checker scores them (`check(text, bets="score")` puts the surprise of every settled bet in `Report.scores`) instead of checking them.
+
+## agenda
 
 `QUEUE NEXT`
 
@@ -342,7 +384,7 @@ An idea that isn't a step toward the current goal goes on the agenda, and work c
 ```
 BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩ BUDGET INT⟨1⟩
     QUEUE GOAL LAM EQ MUL V0 V0 INT⟨50⟩
-    ACT DONE INT⟨7⟩ OK
+    ACT DONE INT⟨7⟩ YES
     NEXT GOAL LAM EQ MUL V0 V0 INT⟨50⟩ BUDGET INT⟨1⟩
     ACT EVAL FILTER LAM EQ MUL V0 V0 INT⟨50⟩ RANGE INT⟨10⟩ OBS [ ] END
 ```
@@ -355,44 +397,6 @@ BOS EVAL APP LAM MUL V0 V0 INT⟨3⟩ RESULT INT⟨9⟩
     EVAL APP NEW3 INT⟨5⟩ RESULT INT⟨25⟩ END
 ```
 
-## Group 14: quoting
-
-`QUOTE WORD SPAN PART KIND NOUN VERB ADJ FRAME`
-
-Everything so far is *used*: an expression stands for its value. `QUOTE` *mentions* one instead: it is the expression itself, as data. It takes exactly one complete expression, and the arities say where that ends, so no closing token is needed. Equal values, different expressions:
-```
-BOS EQ ADD INT⟨2⟩ INT⟨3⟩ INT⟨5⟩ TRUE
-    EQ QUOTE ADD INT⟨2⟩ INT⟨3⟩ QUOTE INT⟨5⟩ FALSE
-    EQ QUOTE ADD INT⟨2⟩ INT⟨3⟩ QUOTE ADD INT⟨2⟩ INT⟨3⟩ TRUE END
-```
-`QUOTE ADD` alone is incomplete (ADD is owed two arguments). To mention just the word, `WORD` takes exactly one token. `KIND` reads its part of speech off the type table:
-```
-BOS KIND WORD ADD VERB
-    KIND WORD LT ADJ
-    KIND QUOTE INT⟨4⟩ NOUN
-    KIND WORD DEF FRAME
-    KIND QUOTE MAP LAM ADD V0 INT⟨1⟩ [ INT⟨2⟩ ] VERB END
-```
-A defined word is classed by what it is: a function is a verb, a word known from examples (a test) is an adjective:
-```
-BOS DEF NEW1 LAM MUL V0 V0 END KIND WORD NEW1 VERB
-    EX INT⟨4⟩ IS NEW2 KIND WORD NEW2 ADJ END
-```
-`SPAN a b` points back at tokens a to b of this sequence (BOS is 0), so the model can talk about what it already wrote without copying it. The span must be one expression or one token:
-```
-BOS ADD INT⟨2⟩ MUL INT⟨3⟩ INT⟨4⟩ INT⟨14⟩
-    SPAN INT⟨3⟩ INT⟨5⟩ QUOTE MUL INT⟨3⟩ INT⟨4⟩
-    KIND SPAN INT⟨3⟩ INT⟨5⟩ VERB
-    SPAN INT⟨3⟩ INT⟨3⟩ WORD MUL END
-```
-`PART op x` fills in an operator's first argument, giving a function of the rest. It is how a word becomes a predicate to apply or pass around:
-```
-BOS APP PART SUB INT⟨10⟩ INT⟨3⟩ INT⟨7⟩
-    FILTER PART LT INT⟨2⟩ [ INT⟨1⟩ INT⟨5⟩ INT⟨3⟩ ] [ INT⟨5⟩ INT⟨3⟩ ]
-    SAME PART SUB INT⟨10⟩ LAM SUB INT⟨10⟩ V0
-    DIFF PART SUB INT⟨10⟩ LAM SUB V0 INT⟨10⟩ END
-```
-
 ---
 
 ## What generates this
@@ -401,16 +405,16 @@ One generator and checker per group, all ordinary code:
 
 | Group | Generator | Checker |
 |---|---|---|
-| 1 | random balanced trees, random hole positions | bracket matcher |
-| 2 | random boolean expressions | evaluator |
-| 3 | random values and comparisons | evaluator (VSA encoders for computed tokens) |
-| 4 | random typed programs, depth-limited | interpreter |
-| 5 | random definitions, uses, example sets drawn from a library of predicates | interpreter, plus equivalence testing on random inputs for `SAME` |
-| 6 | random goals (predicates with a known witness); scripted policies of varying quality for the first trajectories | interpreter; reward = OK within budget |
-| 10 | random predicates and lists; exact chances, bets on random draws | interpreter, plus the exact chance and surprise for each bet |
-| 11 | correct definitions with one small slip (a constant, a swapped operator, a dropped or extra wrapper); tests that fail, the patch, tests that pass | interpreter applies the patch and reruns the tests |
-| 12 | programs evaluated piece by piece with occasional caught slips; episodes solved by thinking first, paying for a search only when thinking fails; step counts | interpreter, plus exact step counts |
-| 13 | solved episodes that queue a nearby goal (one constant changed), sometimes taking it up; repeated chunks queued as candidate words, sometimes defined | interpreter; NEXT must take the oldest item |
-| 14 | an expression used and quoted; KIND of random words, programs and defined words; SPAN back into earlier items; PART applied, mapped, filtered and compared with its LAM | interpreter, with the checker telling SPAN where it is |
+| syntax | random balanced trees, random hole positions | bracket matcher |
+| logic | random boolean expressions | evaluator |
+| values | random values and comparisons | evaluator (VSA encoders for computed tokens) |
+| compute | random typed programs, depth-limited; vector algebra | interpreter |
+| teach | random definitions, uses, example sets drawn from a library of predicates | interpreter, plus equivalence testing on random inputs for `SAME` |
+| quote | an expression used and quoted; KIND of random words, programs and defined words; SPAN back into earlier items; PART applied, mapped, filtered and compared with its LAM | interpreter, with the checker telling SPAN where it is |
+| edit | correct definitions with one small slip (a constant, a swapped operator, a dropped or extra wrapper); tests that fail, the patch, tests that pass | interpreter applies the patch and reruns the tests |
+| episode | random goals (predicates with a known witness); scripted policies of varying quality for the first trajectories | interpreter; reward = YES within budget |
+| think | programs evaluated piece by piece with occasional caught slips; episodes solved by thinking first, paying for a search only when thinking fails; step counts | interpreter, plus exact step counts |
+| belief | random predicates and lists; exact chances, bets on random draws | interpreter, plus the exact chance and surprise for each bet |
+| agenda | solved episodes that queue a nearby goal (one constant changed), sometimes taking it up; repeated chunks queued as candidate words, sometimes defined | interpreter; NEXT must take the oldest item |
 
 The curriculum mixes earlier groups back in as later ones are added, so foundations keep getting rehearsed.

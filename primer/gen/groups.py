@@ -7,9 +7,8 @@ Answers are always computed by the interpreter, never written by hand, so a
 generator can be wrong only about *what* to ask, never about the answer.
 """
 import datetime as dt
-import math
 
-from ..check import compare_functions, steps
+from ..check import bits, compare_functions, steps
 from ..edit import apply_edit, occurrences
 from ..interp import Context, apply, evaluate, remember_literals
 from ..syntax import SPECIAL_FORMS, is_literal, parse_expr, quote, tokenize, unparse
@@ -55,7 +54,7 @@ def _hole_item(r, node, value_text, prefix=""):
     return f"BOS {prefix}{unparse(holed)} {value_text} END {unparse(sub)} END"
 
 
-# ---- group 1: syntax --------------------------------------------------------
+# ---- syntax --------------------------------------------------------
 
 def _shape(r, depth):
     if depth == 0 or r.random() < 0.3:
@@ -64,7 +63,7 @@ def _shape(r, depth):
     return ["[", *kids, "]"]
 
 
-def group1(r):
+def gen_syntax(r):
     toks = _shape(r, r.randint(1, 4))
     if r.random() < 0.4:
         i = r.randrange(len(toks))
@@ -75,7 +74,7 @@ def group1(r):
     return _seq(" ".join(toks)) + pad, None
 
 
-# ---- group 2: logic -----------------------------------------------------------
+# ---- logic -----------------------------------------------------------
 
 def _bool_expr(r, depth):
     if depth == 0 or r.random() < 0.25:
@@ -85,7 +84,7 @@ def _bool_expr(r, depth):
     return op(k, *[_bool_expr(r, depth - 1) for _ in range(arity)])
 
 
-def group2(r):
+def gen_logic(r):
     node = _bool_expr(r, r.randint(1, 3))
     if is_literal(node):
         raise Retry
@@ -96,7 +95,7 @@ def group2(r):
     return _seq(*items), None
 
 
-# ---- group 3: values ------------------------------------------------------------
+# ---- values ------------------------------------------------------------
 
 def _value(r, kind):
     if kind == "INT":
@@ -136,7 +135,7 @@ def _rec_pair(r):
     return lit(rec), ("rec", spelled)
 
 
-def group3(r):
+def gen_values(r):
     items = []
     for _ in range(r.randint(1, 3)):
         roll = r.random()
@@ -167,7 +166,7 @@ def group3(r):
     return _seq(*items), None
 
 
-# ---- group 4: computation ---------------------------------------------------------
+# ---- compute -------------------------------------------------------------
 
 def _program(r, ty=None, depth=None, words=()):
     ty = ty or r.choices(["INT", "LINT", "BOOL", "NUM", "STR"], [4, 3, 2, 1, 1])[0]
@@ -195,7 +194,7 @@ def _vsa_item(r, ctx):
     return _item(op("GT", op("SIM", lit(x), lit(y)), lit(r.choice([0.1, 0.5, 0.9]))), ctx)
 
 
-def group4(r):
+def gen_compute(r):
     if r.random() < 0.15:
         ctx = Context(fuel=20_000)
         return _seq(*[_vsa_item(r, ctx) for _ in range(r.randint(1, 2))]), None
@@ -205,7 +204,7 @@ def group4(r):
     return _seq(_item(node), *[_item(_program(r, depth=2)) for _ in range(r.randint(0, 1))]), None
 
 
-# ---- group 5: teaching frames -------------------------------------------------------
+# ---- teach -----------------------------------------------------------------
 
 def _unary(r, words=(), depth=None):
     """A random INT -> INT function body that uses its argument."""
@@ -228,8 +227,9 @@ def _working_inputs(r, f, ctx, n):
 
 
 _INT_PREDICATES = [
-    ("EQ INT<0> SUB V0 MUL INT<{k}> DIV V0 INT<{k}>", lambda r: {"k": r.randint(2, 5)}),          # divisible by k
-    ("NOT EQ INT<0> SUB V0 MUL INT<{k}> DIV V0 INT<{k}>", lambda r: {"k": r.randint(2, 3)}),      # not divisible
+    ("EQ INT<0> MOD V0 INT<{k}>", lambda r: {"k": r.randint(2, 5)}),                              # divisible by k
+    ("NEQ INT<0> MOD V0 INT<{k}>", lambda r: {"k": r.randint(2, 3)}),                             # not divisible
+    ("GE V0 INT<{k}>", lambda r: {"k": r.randint(-3, 10)}),
     ("GT V0 INT<{k}>", lambda r: {"k": r.randint(-3, 10)}),
     ("LT V0 INT<{k}>", lambda r: {"k": r.randint(-3, 10)}),
     ("AND GT V0 INT<{a}> LT V0 INT<{b}>", lambda r: (lambda a: {"a": a, "b": a + r.randint(2, 6)})(r.randint(-3, 8))),
@@ -365,13 +365,13 @@ def _frame_ask_defined(r, words):
     return _seq(*parts), None
 
 
-def group5(r):
+def gen_teach(r):
     frame = r.choices([_frame_eval, _frame_define, _frame_examples, _frame_relation, _frame_ask_defined],
                       [2, 3, 3, 2, 1])[0]
     return frame(r, ())
 
 
-# ---- group 6: episodes ----------------------------------------------------------------
+# ---- episode -----------------------------------------------------------------
 
 def _goal(r):
     """A predicate over INT with a known witness inside RANGE n."""
@@ -384,11 +384,11 @@ def _goal(r):
         src, n = f"LAM EQ ADD V0 INT<{a}> INT<{a + x}>", x + r.randint(3, 10)
     else:
         a, m = r.randint(5, 40), r.randint(3, 9)
-        src, n = f"LAM AND GT V0 INT<{a}> EQ INT<0> SUB V0 MUL INT<{m}> DIV V0 INT<{m}>", a + 2 * m
+        src, n = f"LAM AND GT V0 INT<{a}> EQ INT<0> MOD V0 INT<{m}>", a + 2 * m
     return src, n
 
 
-def group6(r):
+def gen_episode(r):
     src, n = _goal(r)
     goal = parse_expr(src)
     body = goal[1]
@@ -408,7 +408,7 @@ def group6(r):
         act(f"ACT EVAL {unparse(expr)} OBS {show(found)}")
         parts.append(f"BUDGET INT<{budget}>")
         answer = r.choice(found) if found else 0
-        act(f"ACT DONE INT<{answer}> {'OK' if holds(answer) else 'ERR'}")
+        act(f"ACT DONE INT<{answer}> {'YES' if holds(answer) else 'NO'}")
     else:
         if policy == "error":
             act("ACT EVAL " + r.choice(["DIV INT<1> INT<0>", "GET [ ] INT<0>", "ADD STR<x> INT<1>"]) + " ERR")
@@ -429,11 +429,11 @@ def group6(r):
             raise Retry
         if answer is None:
             answer = r.randrange(n)  # out of budget: guess
-        act(f"ACT DONE INT<{answer}> {'OK' if holds(answer) else 'ERR'}")
+        act(f"ACT DONE INT<{answer}> {'YES' if holds(answer) else 'NO'}")
     return _seq(*parts), None
 
 
-# ---- group 10: beliefs ----------------------------------------------------------------
+# ---- belief -----------------------------------------------------------------
 
 def _int_pred(r):
     """A predicate over INT, from the templates or a random program that uses its argument."""
@@ -453,10 +453,6 @@ def _draw_list(r):
     return ("list", [lit(r.randint(-5, 20)) for _ in range(r.randint(1, 8))])
 
 
-def _bits(p, outcome):
-    return 0.0 - math.log2(p if outcome else 1 - p)   # 0.0 - avoids printing -0
-
-
 def _chance(r, pred, xs):
     """The exact chance, mostly avoiding the certain cases 0 and 1."""
     p = _eval(op("CHANCE", pred, xs))
@@ -465,7 +461,7 @@ def _chance(r, pred, xs):
     return p
 
 
-def group10(r, bet_on_word=None):
+def gen_belief(r, bet_on_word=None):
     """Chances and bets the interpreter can work out exactly: what fraction of
     a list passes a predicate, then bets on random draws from it, the outcome,
     and how surprising the outcome was."""
@@ -498,7 +494,7 @@ def group10(r, bet_on_word=None):
         bet = f"BET {show(p)} {pred_text} {unparse(xs)}"
         tail = f"DRAW {show(x)} {'YES' if hit else 'NO'}"
         if r.random() < 0.7:
-            tail += f" SURPRISE {show(_bits(p, hit))}"
+            tail += f" SURPRISE {show(bits(p, hit))}"
         if i == rounds - 1 and r.random() < 0.15:
             text = " ".join(["BOS", *parts, f"BET HOLE {pred_text} {unparse(xs)}", tail, "END", show(p), "END"])
             return text, None
@@ -506,10 +502,11 @@ def group10(r, bet_on_word=None):
     return _seq(*parts), None
 
 
-# ---- group 11: edits -------------------------------------------------------------------
+# ---- edit --------------------------------------------------------------------
 
-_SWAPS = {"ADD": "SUB", "SUB": "ADD", "MUL": "ADD", "MIN": "MAX", "MAX": "MIN", "LT": "GT", "GT": "LT",
-          "EQ": "NEQ", "NEQ": "EQ", "AND": "OR", "OR": "AND", "ARGMIN": "ARGMAX", "ARGMAX": "ARGMIN"}
+_SWAPS = {"ADD": ["SUB"], "SUB": ["ADD"], "MUL": ["ADD"], "DIV": ["MOD"], "MOD": ["DIV"], "MIN": ["MAX"],
+          "MAX": ["MIN"], "LT": ["GT", "LE"], "GT": ["LT", "GE"], "LE": ["LT", "GE"], "GE": ["GT", "LE"],
+          "EQ": ["NEQ"], "NEQ": ["EQ"], "AND": ["OR"], "OR": ["AND"], "ARGMIN": ["ARGMAX"], "ARGMAX": ["ARGMIN"]}
 
 
 def _mutate(r, sub):
@@ -518,7 +515,7 @@ def _mutate(r, sub):
     if sub[0] == "lit" and type(sub[1]) is int:
         opts.append(lambda: lit(sub[1] + r.choice([-2, -1, 1, 2, 3])))
     if sub[0] == "op" and sub[1] in _SWAPS:
-        opts.append(lambda: ("op", _SWAPS[sub[1]], sub[2]))
+        opts.append(lambda: ("op", r.choice(_SWAPS[sub[1]]), sub[2]))
     if sub[0] == "op" and sub[2]:
         opts.append(lambda: sub[2][0])                       # drop the operator, keep its first argument
     opts.append(lambda: r.choice([op("NEG", sub), op("ABS", sub), op("ADD", sub, lit(r.randint(1, 3))),
@@ -561,7 +558,7 @@ def _mutation(r):
     return good, bad, path
 
 
-def group11(r):
+def gen_edit(r):
     """Repairs (a definition fails its tests, a PATCH fixes it, the tests pass)
     and plain edits (a PATCH, then EXPAND shows the new definition)."""
     good, bad, path = _mutation(r)
@@ -601,7 +598,7 @@ def group11(r):
     return _seq(*parts), None
 
 
-# ---- group 12: thinking ----------------------------------------------------------------
+# ---- think -------------------------------------------------------------------
 
 def _postorder(node):
     """Subexpressions children-first, ending with node itself."""
@@ -677,11 +674,11 @@ def _think_then_act(r):
         if found is ERR or not found:
             raise Retry
         if r.random() < 0.6:
-            parts.append(f"COST {unparse(search)} INT<{used}>")
+            parts.append(f"COST {unparse(search)} STEPS INT<{used}>")
         parts.append(f"ACT EVAL {unparse(search)} OBS {show(found)}")
         parts.append("BUDGET INT<1>")
         answer = found[0]
-    parts.append(f"ACT DONE INT<{answer}> OK")
+    parts.append(f"ACT DONE INT<{answer}> YES")
     return _seq(*parts), None
 
 
@@ -693,17 +690,17 @@ def _costs(r):
         v, used = steps(node, ctx)
         if v is ERR or is_literal(node):
             raise Retry
-        items.append(f"COST {unparse(node)} INT<{used}>")
+        items.append(f"COST {unparse(node)} STEPS INT<{used}>")
     return _seq(*items), None
 
 
-def group12(r):
+def gen_think(r):
     """Thinking: claims written down before acting, withdrawn with OOPS when
     wrong, and the price of a computation in steps."""
     return r.choices([_work, _think_then_act, _costs], [4, 3, 3])[0](r)
 
 
-# ---- group 13: agenda ------------------------------------------------------------------
+# ---- agenda ------------------------------------------------------------------
 
 def _variant(r, goal):
     """The same goal with one constant nudged: the natural "what about ...?" idea."""
@@ -741,15 +738,15 @@ def _queue_goal(r):
     idea = f"QUEUE GOAL {unparse(var)}"
     if r.random() < 0.5:
         parts.append(idea)                       # the idea comes mid-task
-        parts.append(f"ACT DONE INT<{found[0]}> OK")
+        parts.append(f"ACT DONE INT<{found[0]}> YES")
     else:
-        parts.append(f"ACT DONE INT<{found[0]}> OK")
+        parts.append(f"ACT DONE INT<{found[0]}> YES")
         parts.append(idea)
     if r.random() < 0.6:                         # take it up
         parts += ["NEXT", f"GOAL {unparse(var)}", "BUDGET INT<2>"]
         hits = _solve_by_filter(r, var, parts, r.randint(n, n + 15), 2)
         if hits:
-            parts.append(f"ACT DONE INT<{hits[0]}> OK")
+            parts.append(f"ACT DONE INT<{hits[0]}> YES")
     return _seq(*parts), None
 
 
@@ -775,13 +772,13 @@ def _queue_word(r):
     return _seq(*parts), None
 
 
-def group13(r):
+def gen_agenda(r):
     """Side ideas: queue a related goal or a candidate word without leaving the
     current work, and sometimes take it up with NEXT."""
     return r.choices([_queue_goal, _queue_word], [3, 2])[0](r)
 
 
-# ---- group 14: quoting ------------------------------------------------------------------
+# ---- quote --------------------------------------------------------------------
 
 _NEVER_QUOTED = {"BOS", "PAD", "HOLE"}   # would confuse sequence splitting or hole filling
 
@@ -877,14 +874,16 @@ def _parts(r):
     return _seq(*parts), None
 
 
-def group14(r):
-    """Talking about expressions instead of evaluating them: QUOTE and WORD,
+def gen_quote(r):
+    """Talking about expressions instead of evaluating them: QUOTE and TOK,
     SPAN back into the sequence, KIND (parts of speech), and PART."""
     return r.choices([_quote_vs_use, _kinds, _spans, _parts], [2, 3, 3, 2])[0](r)
 
 
-GROUPS = {1: group1, 2: group2, 3: group3, 4: group4, 5: group5, 6: group6, 10: group10, 11: group11,
-          12: group12, 13: group13, 14: group14}
+# In bootstrap order, the same as vocab.toml's groups (a test checks).
+GROUPS = {"syntax": gen_syntax, "logic": gen_logic, "values": gen_values, "compute": gen_compute,
+          "teach": gen_teach, "quote": gen_quote, "edit": gen_edit, "episode": gen_episode,
+          "think": gen_think, "belief": gen_belief, "agenda": gen_agenda}
 
 
 def generate(r, group, max_tries=200):

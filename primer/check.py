@@ -12,16 +12,16 @@ Items:
   EX x IS word | EX x ISNOT word
   ASK x word RESULT YES|NO
   SAME a b | DIFF a b
-  GOAL pred | BUDGET n | ACT EVAL expr | ACT DONE x | OBS value | OK | ERR
+  GOAL pred | BUDGET n | ACT EVAL expr OBS value|ERR | ACT DONE x YES|NO
   BET p pred list  DRAW x  YES|NO  [SURPRISE s]
   BET p ACT ...    (the action's outcome settles the bet)  [SURPRISE s]
   PATCH word [AT k] REPLACE old new | [AT k] WRAP old OP args... ... END
   EVAL expr RESULT wrong OOPS      a thought withdrawn: wrong must really be wrong
-  COST expr n                      expr takes n interpreter steps
+  COST expr STEPS n                expr takes n interpreter steps
   QUEUE GOAL pred | QUEUE fun      put a side idea on the agenda
   NEXT  GOAL pred | NEXT DEF word fun END   take up the oldest agenda item
 
-QUOTE, WORD, SPAN, PART and KIND are ordinary expressions; the checker only
+QUOTE, TOK, SPAN, PART and KIND are ordinary expressions; the checker only
 tells SPAN where it is, so it can point back at earlier tokens.
 """
 import itertools
@@ -53,6 +53,9 @@ def _word(p):
     if VOCAB[t.name].family != "NEW":
         raise SyntaxErr(f"expected a word NEW0..NEW15, got {t}")
     return t.name
+
+
+METRICS = ("STEPS",)   # what COST can measure; FLOPS, WALL, ... come with the Lab
 
 
 def parse_items(toks, starts=None):
@@ -109,9 +112,9 @@ def parse_items(toks, starts=None):
             if a not in ("EVAL", "DONE"):
                 raise SyntaxErr(f"ACT takes EVAL or DONE, got {a}")
             items.append(("act", a.lower(), p.expr()))
-        elif n in ("OK", "ERR"):
+        elif n == "ERR":
             p.next()
-            items.append((n.lower(),))
+            items.append(("err",))
         elif n == "BET":
             p.next()
             prob = p.expr()
@@ -134,7 +137,11 @@ def parse_items(toks, starts=None):
             items.append(("next",))
         elif n == "COST":
             p.next()
-            items.append(("cost", p.expr(), p.expr()))
+            e = p.expr()
+            metric = p.next().name
+            if metric not in METRICS:
+                raise SyntaxErr(f"COST needs a metric ({', '.join(METRICS)}), got {metric}")
+            items.append(("cost", e, p.expr()))
         elif n in ("DRAW", "SURPRISE"):
             p.next()
             items.append((n.lower(), p.expr()))
@@ -272,9 +279,10 @@ def retracted_spans(text):
     return spans
 
 
-def _bits(p, outcome):
+def bits(p, outcome):
+    """Surprise in bits of an outcome that a bet gave probability p to happen."""
     q = p if outcome else 1 - p
-    return -math.log2(q) if q > 0 else math.inf
+    return 0.0 - math.log2(q) if q > 0 else math.inf   # 0.0 - avoids printing -0
 
 
 def check(text, truth=None, bets="exact", agenda=()):
@@ -314,7 +322,7 @@ def check(text, truth=None, bets="exact", agenda=()):
 
     def settle(outcome):
         b, bet["open"] = bet["open"], None
-        b["outcome"], b["bits"] = outcome, _bits(b["p"], outcome)
+        b["outcome"], b["bits"] = outcome, bits(b["p"], outcome)
         rep.scores.append({"p": b["p"], "outcome": outcome, "bits": b["bits"]})
         bet["settled"] = b
 
@@ -527,17 +535,14 @@ def check(text, truth=None, bets="exact", agenda=()):
                 err(f"{where}: observation should be {show(pend[1])}, sequence says {show(want)}")
             if pend and pend[0] == "eval" and action_bet():
                 settle(True)
-        elif tag in ("ok", "err"):
+        elif tag == "err":
             pend, ep["pending"] = ep["pending"], None
-            if not pend:
-                err(f"{where}: {tag.upper()} without an action")
-            elif pend[0] == "eval":
-                if tag == "ok" or pend[1] is not ERR:
-                    err(f"{where}: an evaluation is followed by OBS value, or ERR if it failed")
-            elif pend[1] != (tag == "ok"):
-                err(f"{where}: DONE answer {'satisfies' if pend[1] else 'does not satisfy'} the goal")
-            if pend and action_bet():
-                settle(tag == "ok")
+            if not pend or pend[0] != "eval":
+                err(f"{where}: ERR follows ACT EVAL (a DONE answer is followed by YES or NO)")
+            elif pend[1] is not ERR:
+                err(f"{where}: the action worked, so it is followed by OBS {show(pend[1])}")
+            if pend and pend[0] == "eval" and action_bet():
+                settle(False)
 
         elif tag == "bet":
             _, prob, pred, lst = it
@@ -571,10 +576,16 @@ def check(text, truth=None, bets="exact", agenda=()):
             if not any(valeq(x, y) for y in b["xs"]):
                 err(f"{where}: {show(x)} is not in the bet's list")
             b["drawn"], b["truth"] = True, _call(b["f"], (x,), ctx)
+        elif tag == "outcome" and ep["pending"] and ep["pending"][0] == "done":
+            pend, ep["pending"] = ep["pending"], None
+            if pend[1] != it[1]:
+                err(f"{where}: DONE answer {'satisfies' if pend[1] else 'does not satisfy'} the goal")
+            if action_bet():
+                settle(it[1])
         elif tag == "outcome":
             b = bet["open"]
             if not b or not b["drawn"]:
-                err(f"{where}: YES/NO needs a DRAW first")
+                err(f"{where}: YES/NO follows a DRAW or an ACT DONE")
                 continue
             if b["truth"] is not it[1]:
                 err(f"{where}: the draw {'passes' if b['truth'] is True else 'fails'} the bet's predicate")

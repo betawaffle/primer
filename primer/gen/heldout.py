@@ -5,7 +5,7 @@ rejection, so each rule gets a generator aimed at it; the result is still
 checked against the rule, so a near miss is simply drawn again.
 """
 from ..split import RULES, heldout
-from .groups import Retry, _hole_item, _item, _program, _seq, group10, group11
+from .groups import Retry, _hole_item, _item, _program, _seq, gen_belief, gen_edit
 from .programs import ProgramGen, op
 from ..values import show
 
@@ -28,8 +28,8 @@ def _deep(r):
 TEST_GENERATORS = {
     "fold_in_map": _fold_in_map,
     "deep": _deep,
-    "bet_on_word": lambda r: group10(r, bet_on_word=True),
-    "wrap_at": group11,
+    "bet_on_word": lambda r: gen_belief(r, bet_on_word=True),
+    "wrap_at": gen_edit,
 }
 assert set(TEST_GENERATORS) == set(RULES)
 

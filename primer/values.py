@@ -39,9 +39,9 @@ class Ostensive:
 @dataclass(frozen=True)
 class Quote:
     """An expression, or a single token, held as data instead of being evaluated
-    (QUOTE, WORD, SPAN). text is canonical text form, so equal quotes compare
+    (QUOTE, TOK, SPAN). text is canonical text form, so equal quotes compare
     equal; whole says it is one complete expression (shown as QUOTE text) rather
-    than a lone token that needs arguments (shown as WORD text). Build them with
+    than a lone token that needs arguments (shown as TOK text). Build them with
     syntax.quote(), which works out both."""
     text: str
     whole: bool
@@ -229,7 +229,7 @@ def show(v):
     if k == "FUN":
         return v.name or "<function>"
     if k == "EXPR":
-        return ("QUOTE " if v.whole else "WORD ") + v.text
+        return ("QUOTE " if v.whole else "TOK ") + v.text
     if k == "SYM":
         return v.name
     return k
