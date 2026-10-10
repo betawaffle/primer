@@ -7,6 +7,7 @@ Answers are always computed by the interpreter, never written by hand, so a
 generator can be wrong only about *what* to ask, never about the answer.
 """
 import datetime as dt
+import math
 
 from ..check import compare_functions
 from ..interp import Context, evaluate, remember_literals
@@ -430,7 +431,80 @@ def group6(r):
     return _seq(*parts), None
 
 
-GROUPS = {1: group1, 2: group2, 3: group3, 4: group4, 5: group5, 6: group6}
+# ---- group 10: beliefs ----------------------------------------------------------------
+
+def _int_pred(r):
+    """A predicate over INT, from the templates or a random program that uses its argument."""
+    if r.random() < 0.6:
+        tmpl, params = r.choice(_INT_PREDICATES)
+        return parse_expr("LAM " + tmpl.format(**params(r)))
+    for _ in range(20):
+        body = ProgramGen(r).expr("BOOL", r.randint(1, 2), ("INT",))
+        if uses_var0(body):
+            return ("lam", body)
+    raise Retry
+
+
+def _draw_list(r):
+    if r.random() < 0.5:
+        return op("RANGE", lit(r.randint(1, 20)))
+    return ("list", [lit(r.randint(-5, 20)) for _ in range(r.randint(1, 8))])
+
+
+def _bits(p, outcome):
+    return 0.0 - math.log2(p if outcome else 1 - p)   # 0.0 - avoids printing -0
+
+
+def _chance(r, pred, xs):
+    """The exact chance, mostly avoiding the certain cases 0 and 1."""
+    p = _eval(op("CHANCE", pred, xs))
+    if p in (0.0, 1.0) and r.random() < 0.85:
+        raise Retry
+    return p
+
+
+def group10(r):
+    """Chances and bets the interpreter can work out exactly: what fraction of
+    a list passes a predicate, then bets on random draws from it, the outcome,
+    and how surprising the outcome was."""
+    roll = r.random()
+    if roll < 0.3:
+        items = []
+        for _ in range(r.randint(1, 2)):
+            pred, xs = _int_pred(r), _draw_list(r)
+            _chance(r, pred, xs)
+            items.append(_item(op("CHANCE", pred, xs)))
+        return _seq(*items), None
+
+    ctx = Context(fuel=20_000)
+    pred, parts = _int_pred(r), []
+    name = None
+    if r.random() < 0.3:   # name the predicate first, then bet on the word
+        name = f"NEW{r.randrange(16)}"
+        parts.append(f"DEF {name} {unparse(pred)} END")
+        ctx.words[name] = _eval_fun(pred, ctx, name)
+    xs = _draw_list(r)
+    rounds = r.randint(1, 3)
+    for i in range(rounds):
+        if i and r.random() < 0.4:
+            xs = _draw_list(r)
+        p = _chance(r, pred, xs)
+        vals = _eval(xs)
+        x = r.choice(vals)
+        hit = evaluate(op("APP", pred, lit(x))) is True
+        pred_text = name or unparse(pred)
+        bet = f"BET {show(p)} {pred_text} {unparse(xs)}"
+        tail = f"DRAW {show(x)} {'YES' if hit else 'NO'}"
+        if r.random() < 0.7:
+            tail += f" SURPRISE {show(_bits(p, hit))}"
+        if i == rounds - 1 and r.random() < 0.15:
+            text = " ".join(["BOS", *parts, f"BET HOLE {pred_text} {unparse(xs)}", tail, "END", show(p), "END"])
+            return text, None
+        parts.append(f"{bet} {tail}")
+    return _seq(*parts), None
+
+
+GROUPS = {1: group1, 2: group2, 3: group3, 4: group4, 5: group5, 6: group6, 10: group10}
 
 
 def generate(r, group, max_tries=200):

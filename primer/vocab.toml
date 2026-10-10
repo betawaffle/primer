@@ -580,3 +580,35 @@ id = 162
 name = "DONE"
 group = 6
 vsa = "atom"
+
+# ---- group 10: beliefs ------------------------------------------------------
+
+[[token]]
+id = 163
+name = "CHANCE"
+group = 10
+args = ["FUN", "LIST"]
+ret = "NUM"
+vsa = "atom"
+note = "fraction of the list's items the predicate holds for: the chance a uniform draw passes"
+
+[[token]]
+id = 164
+name = "BET"
+group = 10
+vsa = "atom"
+note = "BET p pred list: chance p that a draw from list passes pred; BET p ACT ...: chance the action succeeds"
+
+[[token]]
+id = 165
+name = "DRAW"
+group = 10
+vsa = "atom"
+note = "DRAW x: the item drawn for the open bet; followed by YES or NO"
+
+[[token]]
+id = 166
+name = "SURPRISE"
+group = 10
+vsa = "atom"
+note = "SURPRISE s: -log2 of the probability the last bet gave to what happened, in bits"

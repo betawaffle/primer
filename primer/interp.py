@@ -211,6 +211,10 @@ def _op(name, args, env, ctx):
         f, lst = v
         _need(kind(lst) == "LIST")
         return [x for x in lst if _bool(_apply(f, x, ctx))]
+    if name == "CHANCE":
+        f, lst = v
+        _need(kind(lst) == "LIST" and lst)
+        return sum(_bool(_apply(f, x, ctx)) for x in lst) / len(lst)
     if name == "FOLD":
         f, acc, lst = v
         _need(kind(lst) == "LIST")

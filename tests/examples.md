@@ -247,6 +247,35 @@ BOS DEF NEW0 LAM AND GT V0 INT⟨1⟩ EQ LEN FILTER LAM IF GT V0 INT⟨1⟩ EQ I
 ```
 `NEW0` is "prime": greater than 1, with no divisor between 2 and itself (integer `DIV` rounds down, and `IF` only evaluates the branch it takes, so there is no division by zero). It's deliberately clunky: a definition this long, recurring often, is exactly what library learning would promote to a permanent token.
 
+## Group 10: beliefs
+
+`CHANCE BET DRAW SURPRISE` (and `YES`/`NO` as outcomes)
+
+The chance that a uniform draw from a list passes a predicate:
+```
+BOS CHANCE LAM GT V0 INT⟨12⟩ RANGE INT⟨20⟩ NUM⟨0.35⟩ END
+```
+Seven of the twenty numbers 0…19 are above 12.
+
+A bet, the draw, whether it passed, and how surprising that was in bits (−log2 of the probability the bet gave it):
+```
+BOS BET NUM⟨0.35⟩ LAM GT V0 INT⟨12⟩ RANGE INT⟨20⟩
+    DRAW INT⟨15⟩ YES SURPRISE NUM⟨1.51457317283⟩
+    BET NUM⟨0.35⟩ LAM GT V0 INT⟨12⟩ RANGE INT⟨20⟩
+    DRAW INT⟨3⟩ NO SURPRISE NUM⟨0.621488376746⟩ END
+```
+Betting on a word, and a certain outcome costs no surprise:
+```
+BOS DEF NEW4 LAM LT V0 INT⟨5⟩ END
+    BET NUM⟨0.5⟩ NEW4 [ INT⟨1⟩ INT⟨9⟩ ] DRAW INT⟨9⟩ NO SURPRISE NUM⟨1⟩
+    BET NUM⟨1⟩ NEW4 [ INT⟨1⟩ INT⟨2⟩ ] DRAW INT⟨2⟩ YES SURPRISE NUM⟨0⟩ END
+```
+Filling in the probability:
+```
+BOS BET HOLE LAM EQ INT⟨0⟩ SUB V0 MUL INT⟨3⟩ DIV V0 INT⟨3⟩ RANGE INT⟨9⟩ DRAW INT⟨6⟩ YES END NUM⟨0.333333333333⟩ END
+```
+A bet can also come right before an action in an episode (`BET p ACT …`); the action's outcome settles it. Generated data doesn't contain these yet, because only the model can say how sure it is: the checker scores them (`check(text, bets="score")` puts the surprise of every settled bet in `Report.scores`) instead of checking them.
+
 ---
 
 ## What generates this
@@ -261,5 +290,6 @@ One generator and checker per group, all ordinary code:
 | 4 | random typed programs, depth-limited | interpreter |
 | 5 | random definitions, uses, example sets drawn from a library of predicates | interpreter, plus equivalence testing on random inputs for `SAME` |
 | 6 | random goals (predicates with a known witness); scripted policies of varying quality for the first trajectories | interpreter; reward = OK within budget |
+| 10 | random predicates and lists; exact chances, bets on random draws | interpreter, plus the exact chance and surprise for each bet |
 
 The curriculum mixes earlier groups back in as later ones are added, so foundations keep getting rehearsed.

@@ -113,6 +113,12 @@ Field names are atoms, so the token `lr` is also the role `LR` used inside REC v
 - **Ostensive words** learned from examples, e.g. "a curve that's about to diverge".
 - English: none. The translator at the edge is a separate model.
 
+## 10. Beliefs (4)
+
+`CHANCE` `BET` `DRAW` `SURPRISE`, with `YES` / `NO` as outcomes.
+
+Added after v0 (ids 163–166). The model states how likely something is before seeing it, and log loss on what actually happens trains it to be calibrated. The first data uses chances the interpreter can compute exactly (uniform draws from a list); bets on the model's own actions (`BET p ACT …`) are scored once there is a model to make them.
+
 ## Example
 
 ```
