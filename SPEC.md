@@ -1,6 +1,6 @@
 # primer language spec (v0)
 
-Covers vocabulary groups 1–6 (syntax, logic, values, computation, teaching frames and episodes) group 10 (beliefs) and group 11 (edits). Groups 7–9 are reserved for the Lab v0 actions and schema fields, which come later.
+Covers vocabulary groups 1–6 (syntax, logic, values, computation, teaching frames and episodes) group 10 (beliefs), group 11 (edits) and group 12 (thinking). Groups 7–9 are reserved for the Lab v0 actions and schema fields, which come later.
 
 ## Source of truth
 
@@ -72,6 +72,8 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 | `BET p pred list`, `DRAW x`, `YES` / `NO` | a bet that a uniform draw from list passes pred, with probability p (exactly `CHANCE pred list`); the draw, which must be in the list; whether it passed |
 | `BET p` before an `ACT` | a bet that the action succeeds (`OBS` for `EVAL`, `OK` for `DONE`); see Beliefs |
 | `PATCH word edit… END` | changes a defined word's definition in place (see Edits); later items use the new definition |
+| `EVAL expr RESULT v OOPS` | a withdrawn thought: v must be wrong; the item is otherwise ignored |
+| `COST expr n` | evaluating expr takes exactly n interpreter steps (at most 20,000) |
 | `SURPRISE s` | right after a bet is settled: s = −log2 of the probability the bet gave to what happened, in bits |
 
 **Holes:** a sequence may contain one `HOLE`. The tokens between its last two `END`s are the filler; the checker puts them in place of the hole and checks the result, so any correct filler passes.
@@ -85,6 +87,12 @@ The checker has two modes. `check(text)` is for training data: a draw bet must s
 ## Edits
 
 Inside `PATCH word … END`, each edit is `REPLACE old new` (the subexpression old becomes new) or `WRAP old OP args…` (old becomes OP's first argument, followed by the rest of OP's arguments). old is matched by its text, like find-and-replace, and must occur exactly once in the current definition; `AT INT⟨k⟩` before an edit picks the k-th occurrence instead (0-based, reading order). Edits apply in order, each to the result of the one before. A patch fails if old isn't there, is ambiguous without `AT`, or the result doesn't evaluate. Implemented in `primer/edit.py`.
+
+## Thinking
+
+A thought is an `EVAL … RESULT` the model writes before acting: free, unlike an `ACT`, and graded like any other claim. `OOPS` right after one withdraws it, and the checker requires the withdrawn value to really be wrong. Generated rows with an `OOPS` carry `"no_loss": [[start, end], …]`, token ranges (from `check.retracted_spans`) holding the withdrawn values; training should put no loss on them, so the model learns to notice a slip and correct it without learning to make one.
+
+`COST expr n` counts interpreter steps: one per expression node evaluated and one per function application, the same units as fuel. It is checked exactly, so it changes if the interpreter's step counting changes; that is a breaking change like an encoder change.
 
 ## Serialization
 
@@ -106,6 +114,7 @@ Inside `PATCH word … END`, each edit is `REPLACE old new` (the subexpression o
 | 6 | episodes with a goal predicate and a budget, solved by filtering, by probing candidates, or with failed actions and wrong answers |
 | 10 | exact `CHANCE` items; rounds of `BET`/`DRAW`/outcome/`SURPRISE` on a predicate (sometimes a defined word) and lists; holes for the probability. Certain chances (0 and 1) are kept rare |
 | 11 | repairs: a definition with one small slip, tests that fail, the `PATCH`, tests that pass (sometimes with the fix as a hole); plain edits followed by `EXPAND` |
+| 12 | programs evaluated piece by piece, bottom-up, with an occasional slip caught by `OOPS`; episodes solved by thinking first and acting once, paying for a search (often after its `COST`) only when thinking fails; `COST` items for random programs |
 
 Every answer is computed by the interpreter, so a generator can choose a bad question but never a wrong answer, and every sequence is run through the checker again before it is written. No sequence appears twice in a run, across all shards; the run tops itself up to the requested count. Random programs keep to what a person would write: every `LET` and every function body uses the variable it binds and isn't just that variable, and `IF` never tests a constant. Words are assigned random `NEW` numbers per sequence so no number gets a fixed meaning.
 

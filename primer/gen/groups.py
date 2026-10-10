@@ -9,7 +9,7 @@ generator can be wrong only about *what* to ask, never about the answer.
 import datetime as dt
 import math
 
-from ..check import compare_functions
+from ..check import compare_functions, steps
 from ..edit import apply_edit, occurrences
 from ..interp import Context, evaluate, remember_literals
 from ..syntax import is_literal, parse_expr, unparse
@@ -600,7 +600,110 @@ def group11(r):
     return _seq(*parts), None
 
 
-GROUPS = {1: group1, 2: group2, 3: group3, 4: group4, 5: group5, 6: group6, 10: group10, 11: group11}
+# ---- group 12: thinking ----------------------------------------------------------------
+
+def _postorder(node):
+    """Subexpressions children-first, ending with node itself."""
+    tag = node[0]
+    kids = node[2] if tag == "op" else node[1] if tag in ("list", "rec") else []
+    for k in kids:
+        yield from _postorder(k)
+    yield node
+
+
+def _wrong(r, v):
+    """A plausible slip for a value, or None if there's no natural one."""
+    if isinstance(v, bool):
+        return not v
+    if isinstance(v, int):
+        return v + r.choice([-10, -2, -1, 1, 2, 10])
+    if isinstance(v, float):
+        return round(v * r.choice([0.5, 1.1, 2.0]) + r.choice([0, 1]), 6)
+    if isinstance(v, list) and v and all(type(x) is int for x in v):
+        w = list(v)
+        if len(w) > 1 and r.random() < 0.5:
+            del w[r.randrange(len(w))]
+        else:
+            w[r.randrange(len(w))] += r.choice([-1, 1])
+        return w
+    return None
+
+
+def _thought(r, node, ctx, slip):
+    """EVAL node RESULT value, or a wrong value, OOPS, and the right one."""
+    v = _eval(node, ctx)
+    right = f"EVAL {unparse(node)} RESULT {show(v)}"
+    w = _wrong(r, v) if slip else None
+    if w is None or w == v:
+        return [right]
+    return [f"EVAL {unparse(node)} RESULT {show(w)} OOPS", right]
+
+
+def _work(r):
+    """Show your work: evaluate a program's pieces bottom-up, sometimes catching a slip."""
+    node = _program(r, depth=r.randint(2, 4))
+    ctx = Context(fuel=20_000)
+    pieces = [n for n in _postorder(node) if n[0] == "op"
+              and evaluate(n, Context(fuel=20_000)) is not ERR and not is_literal(n)]
+    if not pieces or pieces[-1] is not node:
+        raise Retry
+    pieces = pieces[-r.randint(2, 5):]
+    slip = r.randrange(len(pieces)) if r.random() < 0.4 else -1
+    parts = [t for i, n in enumerate(pieces) for t in _thought(r, n, ctx, i == slip)]
+    return _seq(*parts), None
+
+
+def _think_then_act(r):
+    """An episode where thinking is free and acting costs budget: try candidates
+    in your head, then act once. If thinking doesn't find it, pay for a search."""
+    src, n = _goal(r)
+    goal = parse_expr(src)
+    body = goal[1]
+    ctx = Context(fuel=20_000)
+    parts = [f"GOAL {src}", "BUDGET INT<2>"]
+    answer = None
+    cands = r.sample(range(n), min(n, r.randint(2, 6)))
+    slip = r.randrange(len(cands)) if r.random() < 0.3 else -1
+    for i, x in enumerate(cands):
+        probe = substitute(body, x)
+        parts += _thought(r, probe, ctx, i == slip)
+        if _eval(probe, ctx) is True:
+            answer = x
+            break
+    if answer is None:
+        search = op("FILTER", goal, op("RANGE", lit(n)))
+        found, used = steps(search, ctx)
+        if found is ERR or not found:
+            raise Retry
+        if r.random() < 0.6:
+            parts.append(f"COST {unparse(search)} INT<{used}>")
+        parts.append(f"ACT EVAL {unparse(search)} OBS {show(found)}")
+        parts.append("BUDGET INT<1>")
+        answer = found[0]
+    parts.append(f"ACT DONE INT<{answer}> OK")
+    return _seq(*parts), None
+
+
+def _costs(r):
+    ctx = Context(fuel=20_000)
+    items = []
+    for _ in range(r.randint(1, 3)):
+        node = _program(r, depth=r.randint(1, 4))
+        v, used = steps(node, ctx)
+        if v is ERR or is_literal(node):
+            raise Retry
+        items.append(f"COST {unparse(node)} INT<{used}>")
+    return _seq(*items), None
+
+
+def group12(r):
+    """Thinking: claims written down before acting, withdrawn with OOPS when
+    wrong, and the price of a computation in steps."""
+    return r.choices([_work, _think_then_act, _costs], [4, 3, 3])[0](r)
+
+
+GROUPS = {1: group1, 2: group2, 3: group3, 4: group4, 5: group5, 6: group6, 10: group10, 11: group11,
+          12: group12}
 
 
 def generate(r, group, max_tries=200):

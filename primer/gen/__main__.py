@@ -1,6 +1,6 @@
 """Write generated training data as JSON-lines shards.
 
-    python3 -m primer.gen --groups 1-6,10-11 --count 100000 --out data/ --workers 16
+    python3 -m primer.gen --groups 1-6,10-12 --count 100000 --out data/ --workers 16
 
 Each line: {"group", "text", "truth", "encoder", "ids", "payloads"}, plus
 "heldout" (the rules it matches) in the test split. --split train (the
@@ -20,13 +20,13 @@ import sys
 import time
 from pathlib import Path
 
-from ..check import check
+from ..check import check, retracted_spans
 from ..serialize import digest, to_ids
 from ..split import RULES, heldout
 from .groups import GROUPS, generate
 from .heldout import generate_test
 
-DEFAULT_WEIGHTS = {1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 3, 10: 3, 11: 4}
+DEFAULT_WEIGHTS = {1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 3, 10: 3, 11: 4, 12: 4}
 
 
 def parse_groups(spec):
@@ -65,6 +65,8 @@ def _work(args):
                 if rep.errors or rep.unverified:
                     stats["rejected"] += 1
                     continue
+            if "OOPS" in text:
+                extra["no_loss"] = retracted_spans(text)
             seen.add(h)
             order.append(bytes.fromhex(h)[:16])
             f.write(json.dumps({"group": g, "text": text, "truth": truth, **extra, **to_ids(text)}) + "\n")
@@ -85,7 +87,7 @@ def _dedupe(path, order, seen):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python3 -m primer.gen", description=__doc__.split("\n\n")[0])
-    ap.add_argument("--groups", default="1-6,10-11", help="e.g. 1-6,10-11 or 2,4,5")
+    ap.add_argument("--groups", default="1-6,10-12", help="e.g. 1-6,10-12 or 2,4,5")
     ap.add_argument("--count", type=int, default=1000, help="sequences in total")
     ap.add_argument("--shard-size", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=0)

@@ -1,6 +1,6 @@
 import unittest
 
-from primer.check import check
+from primer.check import check, retracted_spans
 from primer.interp import evaluate
 from primer.serialize import canonical, from_ids, to_ids
 from primer.syntax import parse_expr, unparse
@@ -35,6 +35,11 @@ WRONG = [
     "BOS PATCH NEW3 REPLACE INT<2> INT<3> END END",                                    # never defined
     "BOS DEF NEW3 LAM ADD V0 INT<2> END PATCH NEW3 REPLACE INT<2> INT<4> END EXPAND NEW3 RESULT LAM ADD V0 INT<3> END",
     "BOS DEF NEW3 LAM ADD V0 INT<2> END PATCH NEW3 WRAP V0 LAM END END",
+    "BOS EVAL MUL INT<6> INT<7> RESULT INT<42> OOPS END",                               # it was right
+    "BOS ADD INT<1> INT<2> INT<3> OOPS END",                                            # OOPS needs EVAL
+    "BOS EVAL MUL INT<6> INT<7> RESULT INT<48> OOPS EVAL MUL INT<6> INT<7> RESULT INT<43> END",
+    "BOS COST ADD INT<1> INT<2> INT<4> END",
+    "BOS COST LET LAM APP V0 V0 APP V0 V0 INT<5> END",                                  # never finishes
 ]
 
 
@@ -66,6 +71,13 @@ class TestCore(unittest.TestCase):
         self.assertEqual([(x["p"], x["outcome"]) for x in rep.scores], [(0.9, False)])
         self.assertAlmostEqual(rep.scores[0]["bits"], 3.32192809489)
 
+    def test_retracted_values_get_no_loss(self):
+        s = "BOS EVAL MUL INT<6> INT<7> RESULT INT<48> OOPS EVAL MUL INT<6> INT<7> RESULT INT<42> END"
+        ids = to_ids(s)["ids"]
+        self.assertEqual(retracted_spans(s), [[6, 7]])
+        self.assertEqual(VOCAB.by_id[ids[6]].name, "INT")
+        self.assertEqual(VOCAB.by_id[ids[7]].name, "OOPS")
+
     def test_text_roundtrip(self):
         for src in ["ADD NUM<0.5> INT<3>", "MAP LAM MUL V0 V0 [ INT<1> INT<2> ]",
                     "FIELD REC<{a:1, b:x}> STR<b>", "LET INT<2> LET INT<10> SUB V0 V1"]:
@@ -81,7 +93,7 @@ class TestCore(unittest.TestCase):
     def test_ids_are_unique_and_stable(self):
         ids = [t.id for t in VOCAB.tokens]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual((VOCAB["BOS"].id, VOCAB["R0"].id, VOCAB["R63"].id, VOCAB["CHANCE"].id), (0, 25, 88, 163))  # pinned: ids must never change
+        self.assertEqual((VOCAB["BOS"].id, VOCAB["R0"].id, VOCAB["R63"].id, VOCAB["CHANCE"].id, VOCAB["COST"].id), (0, 25, 88, 163, 172))  # pinned: ids must never change
 
 
 if __name__ == "__main__":

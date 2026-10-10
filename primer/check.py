@@ -16,6 +16,8 @@ Items:
   BET p pred list  DRAW x  YES|NO  [SURPRISE s]
   BET p ACT ...    (the action's outcome settles the bet)  [SURPRISE s]
   PATCH word [AT k] REPLACE old new | [AT k] WRAP old OP args... ... END
+  EVAL expr RESULT wrong OOPS      a thought withdrawn: wrong must really be wrong
+  COST expr n                      expr takes n interpreter steps
 """
 import itertools
 import math
@@ -108,6 +110,12 @@ def parse_items(toks):
                 items.append(("bet", prob, None, None))
             else:
                 items.append(("bet", prob, p.expr(), p.expr()))
+        elif n == "OOPS":
+            p.next()
+            items.append(("oops",))
+        elif n == "COST":
+            p.next()
+            items.append(("cost", p.expr(), p.expr()))
         elif n in ("DRAW", "SURPRISE"):
             p.next()
             items.append((n.lower(), p.expr()))
@@ -212,6 +220,32 @@ def sequence_items(text):
     return parse_items(toks[1:-1])
 
 
+COST_FUEL = 20_000   # the most steps a COST claim can be about
+
+
+def steps(node, ctx):
+    """(value, interpreter steps) for evaluating node, on its own fuel."""
+    saved, ctx.fuel = ctx.fuel, COST_FUEL
+    try:
+        v = evaluate(node, ctx)
+        return v, COST_FUEL - ctx.fuel
+    finally:
+        ctx.fuel = saved
+
+
+def retracted_spans(text):
+    """Token ranges [start, end) of values withdrawn by OOPS: the tokens
+    between each OOPS and the RESULT before it. Training puts no loss on
+    them, so the model learns to notice mistakes without learning to make them."""
+    names = [t.name for t in tokenize(text)]
+    spans = []
+    for j, n in enumerate(names):
+        if n == "OOPS":
+            r = max(i for i in range(j) if names[i] == "RESULT")
+            spans.append([r + 1, j])
+    return spans
+
+
 def _bits(p, outcome):
     q = p if outcome else 1 - p
     return -math.log2(q) if q > 0 else math.inf
@@ -260,10 +294,11 @@ def check(text, truth=None, bets="exact"):
         where = f"item {idx + 1} ({tag})"
         # CLEAN may snap to any value the sequence has shown so far, but never
         # to the answer it is being checked against.
-        answer = it[2] if tag in ("implicit", "eval") else None
+        answer = it[2] if tag in ("implicit", "eval", "cost") else None
         for part in it[1:]:
             if isinstance(part, tuple) and part is not answer:
                 remember_literals(part, ctx)
+        retracted = tag == "eval" and idx + 1 < len(items) and items[idx + 1] == ("oops",)
 
         if tag in ("implicit", "eval") and not (tag == "eval" and it[2] is None):
             expr, expected = it[1], it[2]
@@ -276,9 +311,27 @@ def check(text, truth=None, bets="exact"):
                 err(f"{where}: the result {unparse(expected)} must be a value")
                 continue
             want = value_of(expected)
+            if retracted:
+                if valeq(got, want):
+                    err(f"{where}: OOPS withdraws a thought that was right: {unparse(expr)} is {show(got)}")
+                continue
             if not valeq(got, want):
                 err(f"{where}: {unparse(expr)} gives {show(got)}, sequence says {show(want)}")
             remember_literals(expected, ctx)
+
+        elif tag == "oops":
+            prev = items[idx - 1] if idx else None
+            if not prev or prev[0] != "eval" or prev[2] is None:
+                err(f"{where}: OOPS follows EVAL ... RESULT, the thought it withdraws")
+
+        elif tag == "cost":
+            _, expr, n = it
+            v, used = steps(expr, ctx)
+            claim = value_of(n)
+            if v is ERR and used >= COST_FUEL:
+                err(f"{where}: {unparse(expr)} takes more than {COST_FUEL} steps")
+            elif kind(claim) != "INT" or claim != used:
+                err(f"{where}: {unparse(expr)} takes {used} steps, sequence says {show(claim)}")
 
         elif tag == "eval":   # EVAL with no RESULT only makes sense as an action
             err(f"{where}: EVAL needs RESULT outside ACT")
