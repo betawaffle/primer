@@ -311,7 +311,7 @@ BOS DEF NEW1 LAM MUL V0 INT⟨3⟩ END
 
 ## Group 12: thinking
 
-`OOPS COST`
+`OOPS COST STEPS`
 
 Thinking is writing claims down before acting. Each `EVAL … RESULT` is a thought the checker grades. Showing the work on `ADD MUL 6 7 3`, with a slip caught along the way:
 ```
@@ -328,10 +328,10 @@ BOS GOAL LAM EQ MUL V0 V0 INT⟨49⟩ BUDGET INT⟨1⟩
     EVAL EQ MUL INT⟨7⟩ INT⟨7⟩ INT⟨49⟩ RESULT TRUE
     ACT DONE INT⟨7⟩ OK END
 ```
-`COST e n` says evaluating e takes n interpreter steps, so the model can tell when thinking is getting expensive and paying for an action is cheaper:
+`COST e STEPS n` says evaluating e takes n interpreter steps, so the model can tell when thinking is getting expensive and paying for an action is cheaper:
 ```
-BOS COST ADD INT⟨1⟩ INT⟨2⟩ INT⟨3⟩
-    COST FILTER LAM GT V0 INT⟨3⟩ RANGE INT⟨10⟩ INT⟨44⟩ END
+BOS COST ADD INT⟨1⟩ INT⟨2⟩ STEPS INT⟨3⟩
+    COST FILTER LAM GT V0 INT⟨3⟩ RANGE INT⟨10⟩ STEPS INT⟨44⟩ END
 ```
 
 ## Group 13: agenda

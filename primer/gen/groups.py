@@ -674,7 +674,7 @@ def _think_then_act(r):
         if found is ERR or not found:
             raise Retry
         if r.random() < 0.6:
-            parts.append(f"COST {unparse(search)} INT<{used}>")
+            parts.append(f"COST {unparse(search)} STEPS INT<{used}>")
         parts.append(f"ACT EVAL {unparse(search)} OBS {show(found)}")
         parts.append("BUDGET INT<1>")
         answer = found[0]
@@ -690,7 +690,7 @@ def _costs(r):
         v, used = steps(node, ctx)
         if v is ERR or is_literal(node):
             raise Retry
-        items.append(f"COST {unparse(node)} INT<{used}>")
+        items.append(f"COST {unparse(node)} STEPS INT<{used}>")
     return _seq(*items), None
 
 

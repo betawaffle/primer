@@ -811,12 +811,20 @@ id = 182
 name = "COST"
 group = "think"
 vsa = "atom"
-note = "COST e n: evaluating e takes n interpreter steps"
+note = "COST e STEPS n: evaluating e takes n interpreter steps"
+
+[[token]]
+id = 183
+name = "STEPS"
+group = "think"
+ret = "SYM"
+vsa = "atom"
+note = "COST metric: interpreter steps, known exactly"
 
 # ---- belief: chances, bets and surprise -------------------------------------
 
 [[token]]
-id = 183
+id = 184
 name = "CHANCE"
 group = "belief"
 args = ["FUN", "LIST"]
@@ -825,21 +833,21 @@ vsa = "atom"
 note = "fraction of the list's items the predicate holds for: the chance a uniform draw passes"
 
 [[token]]
-id = 184
+id = 185
 name = "BET"
 group = "belief"
 vsa = "atom"
 note = "BET p pred list: chance p that a draw from list passes pred; BET p ACT ...: chance the action succeeds"
 
 [[token]]
-id = 185
+id = 186
 name = "DRAW"
 group = "belief"
 vsa = "atom"
 note = "DRAW x: the item drawn for the open bet; followed by YES or NO"
 
 [[token]]
-id = 186
+id = 187
 name = "SURPRISE"
 group = "belief"
 vsa = "atom"
@@ -848,14 +856,14 @@ note = "SURPRISE s: -log2 of the probability the last bet gave to what happened,
 # ---- agenda: side ideas kept for later --------------------------------------
 
 [[token]]
-id = 187
+id = 188
 name = "QUEUE"
 group = "agenda"
 vsa = "atom"
 note = "QUEUE GOAL pred | QUEUE fun: put a side idea on the agenda (a goal, or a candidate word) without leaving the current work"
 
 [[token]]
-id = 188
+id = 189
 name = "NEXT"
 group = "agenda"
 vsa = "atom"

@@ -17,7 +17,7 @@ Items:
   BET p ACT ...    (the action's outcome settles the bet)  [SURPRISE s]
   PATCH word [AT k] REPLACE old new | [AT k] WRAP old OP args... ... END
   EVAL expr RESULT wrong OOPS      a thought withdrawn: wrong must really be wrong
-  COST expr n                      expr takes n interpreter steps
+  COST expr STEPS n                expr takes n interpreter steps
   QUEUE GOAL pred | QUEUE fun      put a side idea on the agenda
   NEXT  GOAL pred | NEXT DEF word fun END   take up the oldest agenda item
 
@@ -53,6 +53,9 @@ def _word(p):
     if VOCAB[t.name].family != "NEW":
         raise SyntaxErr(f"expected a word NEW0..NEW15, got {t}")
     return t.name
+
+
+METRICS = ("STEPS",)   # what COST can measure; FLOPS, WALL, ... come with the Lab
 
 
 def parse_items(toks, starts=None):
@@ -134,7 +137,11 @@ def parse_items(toks, starts=None):
             items.append(("next",))
         elif n == "COST":
             p.next()
-            items.append(("cost", p.expr(), p.expr()))
+            e = p.expr()
+            metric = p.next().name
+            if metric not in METRICS:
+                raise SyntaxErr(f"COST needs a metric ({', '.join(METRICS)}), got {metric}")
+            items.append(("cost", e, p.expr()))
         elif n in ("DRAW", "SURPRISE"):
             p.next()
             items.append((n.lower(), p.expr()))

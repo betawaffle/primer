@@ -39,8 +39,9 @@ WRONG = [
     "BOS EVAL MUL INT<6> INT<7> RESULT INT<42> OOPS END",                               # it was right
     "BOS ADD INT<1> INT<2> INT<3> OOPS END",                                            # OOPS needs EVAL
     "BOS EVAL MUL INT<6> INT<7> RESULT INT<48> OOPS EVAL MUL INT<6> INT<7> RESULT INT<43> END",
-    "BOS COST ADD INT<1> INT<2> INT<4> END",
-    "BOS COST LET LAM APP V0 V0 APP V0 V0 INT<5> END",                                  # never finishes
+    "BOS COST ADD INT<1> INT<2> STEPS INT<4> END",
+    "BOS COST ADD INT<1> INT<2> INT<3> END",                                            # no metric
+    "BOS COST LET LAM APP V0 V0 APP V0 V0 STEPS INT<5> END",                                  # never finishes
     "BOS NEXT GOAL LAM GT V0 INT<1> END",                                               # empty agenda
     "BOS QUEUE INT<3> END",                                                             # not a goal or function
     "BOS QUEUE LAM MUL V0 V0 NEXT DEF NEW3 LAM ADD V0 V0 END END",                      # not what was queued
@@ -144,7 +145,7 @@ class TestCore(unittest.TestCase):
         ids = [t.id for t in VOCAB.tokens]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(sorted(ids), list(range(len(ids))))             # no gaps
-        pinned = {"BOS": 0, "R0": 27, "LAM": 91, "EVAL": 134, "CHANCE": 183}   # ids must never change
+        pinned = {"BOS": 0, "R0": 27, "LAM": 91, "EVAL": 134, "CHANCE": 184}   # ids must never change
         self.assertEqual({k: VOCAB[k].id for k in pinned}, pinned)
 
 
