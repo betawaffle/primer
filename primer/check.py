@@ -20,6 +20,9 @@ Items:
   COST expr n                      expr takes n interpreter steps
   QUEUE GOAL pred | QUEUE fun      put a side idea on the agenda
   NEXT  GOAL pred | NEXT DEF word fun END   take up the oldest agenda item
+
+QUOTE, WORD, SPAN, PART and KIND are ordinary expressions; the checker only
+tells SPAN where it is, so it can point back at earlier tokens.
 """
 import itertools
 import math
@@ -52,9 +55,13 @@ def _word(p):
     return t.name
 
 
-def parse_items(toks):
+def parse_items(toks, starts=None):
+    """Items of a sequence body. If starts is a list, each item's first token
+    position is appended to it."""
     p, items = Parser(toks), []
     while p.peek() is not None:
+        if starts is not None:
+            starts.append(p.pos)
         t = p.peek()
         n = t.name
         if n == "DEF":
@@ -209,8 +216,10 @@ def compare_functions(f, g, ctx):
     return agree, None
 
 
-def sequence_items(text):
-    """Parse a whole sequence into items, with any HOLE already filled in."""
+def sequence_items(text, info=None):
+    """Parse a whole sequence into items, with any HOLE already filled in.
+    If info is a dict, it gets the sequence's tokens ("tokens", after filling)
+    and each item's first token position ("starts", counting BOS as 0)."""
     toks = tokenize(text)
     while toks and toks[-1].name == "PAD":
         toks.pop()
@@ -229,7 +238,12 @@ def sequence_items(text):
             raise SyntaxErr("empty filler")
         h = holes[0]
         toks = main[:h] + filler + main[h + 1:]
-    return parse_items(toks[1:-1])
+    starts = []
+    items = parse_items(toks[1:-1], starts)
+    if info is not None:
+        info["tokens"] = [str(t) for t in toks]
+        info["starts"] = [i + 1 for i in starts]
+    return items
 
 
 COST_FUEL = 20_000   # the most steps a COST claim can be about
@@ -276,14 +290,16 @@ def check(text, truth=None, bets="exact", agenda=()):
     ("goal" | "word", text) pairs, oldest first, for a sequence that begins
     with NEXT; the harness keeps the agenda between sequences."""
     rep = Report(text)
+    info = {}
     try:
-        items = sequence_items(text)
+        items = sequence_items(text, info)
     except SyntaxErr as e:
         rep.errors.append(f"syntax: {e}")
         return rep
     rep.items = len(items)
 
     ctx = Context()
+    ctx.tokens = info["tokens"]
 
     defs, deferred, links = {}, [], {}
     ep = {"goal": None, "budget": None, "pending": None}
@@ -309,6 +325,7 @@ def check(text, truth=None, bets="exact", agenda=()):
     for idx, it in enumerate(items):
         tag = it[0]
         where = f"item {idx + 1} ({tag})"
+        ctx.before = info["starts"][idx]   # SPAN points back, never at the item itself
         # CLEAN may snap to any value the sequence has shown so far, but never
         # to the answer it is being checked against.
         answer = it[2] if tag in ("implicit", "eval", "cost") else None

@@ -674,3 +674,82 @@ name = "NEXT"
 group = 13
 vsa = "atom"
 note = "NEXT: start on the oldest agenda item; the next item must be its GOAL or a DEF of its word"
+
+# ---- group 14: quoting ------------------------------------------------------
+
+[[token]]
+id = 175
+name = "QUOTE"
+group = 14
+args = ["QUOTED"]
+ret = "EXPR"
+vsa = "atom"
+note = "QUOTE x: the expression x as data, not evaluated. x is exactly one complete expression; arities say where it ends"
+
+[[token]]
+id = 176
+name = "WORD"
+group = 14
+args = ["TOKEN"]
+ret = "EXPR"
+vsa = "atom"
+note = "WORD t: the single token t as data, without its arguments (WORD ADD is the word, QUOTE ADD x y an expression)"
+
+[[token]]
+id = 177
+name = "SPAN"
+group = 14
+args = ["INT", "INT"]
+ret = "EXPR"
+vsa = "atom"
+note = "SPAN a b: tokens a..b (inclusive, BOS = 0) from earlier in this sequence, as a quote; they must be one expression or one token"
+
+[[token]]
+id = 178
+name = "PART"
+group = 14
+args = ["OP", "ANY"]
+ret = "FUN"
+vsa = "atom"
+note = "PART op x: op with its first argument filled in, a function of the rest (PART SUB x = LAM SUB x V0)"
+
+[[token]]
+id = 179
+name = "KIND"
+group = 14
+args = ["EXPR"]
+ret = "SYM"
+vsa = "atom"
+note = "KIND q: part of speech of the token heading q, from the type table: NOUN, VERB, ADJ or FRAME"
+
+[[token]]
+id = 180
+name = "NOUN"
+group = 14
+ret = "SYM"
+vsa = "atom"
+note = "values and handles: literals, slots, variables, lists, records"
+
+[[token]]
+id = 181
+name = "VERB"
+group = 14
+ret = "SYM"
+vsa = "atom"
+note = "operators and functions"
+
+[[token]]
+id = 182
+name = "ADJ"
+group = 14
+ret = "SYM"
+vsa = "atom"
+note = "tests: operators returning BOOL from non-BOOL arguments, and words known from examples"
+
+[[token]]
+id = 183
+name = "FRAME"
+group = 14
+ret = "SYM"
+vsa = "atom"
+note = "syntax, teaching and episode tokens"

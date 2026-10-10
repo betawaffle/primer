@@ -11,9 +11,10 @@ import math
 
 from ..check import compare_functions, steps
 from ..edit import apply_edit, occurrences
-from ..interp import Context, evaluate, remember_literals
-from ..syntax import is_literal, parse_expr, unparse
-from ..values import ERR, Closure, show
+from ..interp import Context, apply, evaluate, remember_literals
+from ..syntax import SPECIAL_FORMS, is_literal, parse_expr, quote, tokenize, unparse
+from ..values import ERR, Closure, Ostensive, Quote, show
+from ..vocab import VOCAB
 from .programs import ProgramGen, lit, op, rand_num, rand_str, replace, size_ok, substitute, subtrees, uses_var0
 
 
@@ -780,8 +781,110 @@ def group13(r):
     return r.choices([_queue_goal, _queue_word], [3, 2])[0](r)
 
 
+# ---- group 14: quoting ------------------------------------------------------------------
+
+_NEVER_QUOTED = {"BOS", "PAD", "HOLE"}   # would confuse sequence splitting or hole filling
+
+
+def _quote_vs_use(r):
+    """The same expression used (it gives a value) and mentioned (it is a
+    quote): two expressions can be equal as values but differ as quotes."""
+    ctx = Context(fuel=20_000)
+    node = _program(r, ty=r.choice(["INT", "INT", "LINT", "BOOL"]), depth=r.randint(1, 3))
+    v = _eval(node, ctx)
+    parts = [_item(node, ctx)]
+    same = lit(v) if not isinstance(v, list) else ("list", [lit(x) for x in v])
+    picks = [op("EQ", node, same),
+             op("EQ", ("lit", Quote(unparse(node), True)), ("lit", Quote(unparse(same), True))),
+             op("EQ", ("lit", Quote(unparse(node), True)), ("lit", Quote(unparse(node), True)))]
+    for e in r.sample(picks, r.randint(1, 3)):
+        parts.append(_item(e, ctx))
+    return _seq(*parts), None
+
+
+def _kinds(r):
+    """Parts of speech: KIND of single words and of whole expressions."""
+    ctx = Context(fuel=20_000)
+    parts = []
+    names = [t.name for t in VOCAB.tokens if t.name not in _NEVER_QUOTED and t.family != "NEW"]
+    ops = [t.name for t in VOCAB.tokens if t.args and t.name not in SPECIAL_FORMS]
+    word = f"NEW{r.randrange(16)}"
+    if r.random() < 0.4:                         # a defined word is classed by what it is
+        if r.random() < 0.5:
+            body = ("lam", _unary(r))
+            ctx.words[word] = _eval_fun(body, ctx, word)
+            parts.append(f"DEF {word} {unparse(body)} END")
+        else:
+            src, domain = _predicate(r)
+            pred = evaluate(parse_expr(src), ctx)
+            x = domain()
+            parts.append(f"EX {unparse(x)} {'IS' if apply(pred, evaluate(x, ctx), ctx) is True else 'ISNOT'} {word}")
+            ctx.words[word] = Ostensive(word, [], [])
+        parts.append(_item(op("KIND", ("lit", quote(word))), ctx))
+    for _ in range(r.randint(1, 3)):
+        if r.random() < 0.6:
+            q = quote(r.choice(ops) if r.random() < 0.6 else r.choice(names))
+        else:
+            q = Quote(unparse(_program(r, depth=r.randint(1, 2))), True)
+        parts.append(_item(op("KIND", ("lit", q)), ctx))
+    return _seq(*parts), None
+
+
+def _spans(r):
+    """Point back at part of an earlier expression with SPAN: copy it as a
+    quote, or say what kind of thing it is."""
+    ctx = Context(fuel=20_000)
+    parts, exprs = [], []
+    for _ in range(r.randint(1, 2)):
+        node = _program(r, depth=r.randint(1, 3))
+        start = len(tokenize(_seq(*parts))) - 1      # where this item begins (before the final END)
+        parts.append(_item(node, ctx))
+        exprs.append((start, node))
+    start, node = r.choice(exprs)
+    path, sub = r.choice(list(subtrees(node)))
+    holed = tokenize(unparse(replace(node, path, ("hole",))))
+    a = start + [t.name for t in holed].index("HOLE")
+    b = a + len(tokenize(unparse(sub))) - 1
+    if r.random() < 0.3 and sub[0] == "op":       # just the operator, not its arguments
+        b = a
+    ctx.tokens = [str(t) for t in tokenize(_seq(*parts))][:-1]
+    ctx.before = len(ctx.tokens)
+    span = op("SPAN", lit(a), lit(b))
+    for e in r.sample([span, op("KIND", span), op("EQ", span, ("lit", quote(unparse(sub))))], r.randint(1, 2)):
+        parts.append(_item(e, ctx))
+        ctx.tokens = [str(t) for t in tokenize(_seq(*parts))][:-1]
+        ctx.before = len(ctx.tokens)
+    return _seq(*parts), None
+
+
+_PART_OPS = ["ADD", "SUB", "MUL", "MIN", "MAX", "LT", "GT", "EQ"]
+
+
+def _parts(r):
+    """PART: an operator with its first argument filled in, used as a function."""
+    ctx = Context(fuel=20_000)
+    name, x = r.choice(_PART_OPS), r.randint(-3, 9)
+    f = ("part", name, lit(x))
+    xs = ("list", [lit(r.randint(-3, 9)) for _ in range(r.randint(2, 5))])
+    picks = [op("APP", f, lit(r.randint(-3, 9))), op("MAP", f, xs)]
+    if VOCAB[name].ret == "BOOL":
+        picks.append(op("FILTER", f, xs))
+    parts = [_item(e, ctx) for e in r.sample(picks, r.randint(1, 2))]
+    if r.random() < 0.6:
+        parts.append(f"SAME {unparse(f)} LAM {name} INT<{x}> V0")
+    if name in ("SUB", "LT", "GT") and r.random() < 0.5:   # argument order matters
+        parts.append(f"DIFF {unparse(f)} LAM {name} V0 INT<{x}>")
+    return _seq(*parts), None
+
+
+def group14(r):
+    """Talking about expressions instead of evaluating them: QUOTE and WORD,
+    SPAN back into the sequence, KIND (parts of speech), and PART."""
+    return r.choices([_quote_vs_use, _kinds, _spans, _parts], [2, 3, 3, 2])[0](r)
+
+
 GROUPS = {1: group1, 2: group2, 3: group3, 4: group4, 5: group5, 6: group6, 10: group10, 11: group11,
-          12: group12, 13: group13}
+          12: group12, 13: group13, 14: group14}
 
 
 def generate(r, group, max_tries=200):

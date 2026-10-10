@@ -8,8 +8,9 @@ or from the model can always be run safely.
 import math
 
 from . import vsa
-from .syntax import MISSING
-from .values import ERR, Closure, kind, numeric, valeq
+from .syntax import MISSING, SyntaxErr, quote, tokenize
+from .values import ERR, Closure, Ostensive, Sym, kind, numeric, valeq
+from .vocab import VOCAB
 
 DEFAULT_FUEL = 200_000
 
@@ -26,6 +27,8 @@ class Context:
         self.slots = {}
         self.memory = []   # values CLEAN may snap to
         self.fuel = fuel
+        self.tokens = None  # the whole sequence, for SPAN (set by the checker)
+        self.before = 0     # SPAN may only point at tokens before this position
 
     def remember(self, v):
         """Add a value and everything nested inside it to CLEAN's memory."""
@@ -102,7 +105,41 @@ def _ev(node, env, ctx):
         return dict(zip(keys, items[1::2]))
     if tag == "op":
         return _op(node[1], node[2], env, ctx)
+    if tag == "part":
+        return _part(node[1], _ev(node[2], env, ctx))
     raise ValueError(node)
+
+
+def _part(name, x):
+    """PART op x: op with its first argument filled in, as a curried function
+    of the rest. PART SUB x is LAM SUB x V0; PART IF c is LAM LAM IF c V1 V0."""
+    _need(x is not ERR)
+    rest = VOCAB[name].arity - 1
+    body = ("op", name, [("lit", x), *[("var", i) for i in reversed(range(rest))]])
+    for _ in range(rest - 1):
+        body = ("lam", body)
+    return Closure(body, ())
+
+
+def category(text, ctx):
+    """KIND: the part of speech of the token heading a quote, read off the type
+    table. Values and handles are NOUN; operators are VERB, except those that
+    test something (they return BOOL from non-BOOL arguments), which are ADJ;
+    syntax, teaching and episode tokens are FRAME. A defined word is classed by
+    what it is now: a function is a VERB, a word known from examples an ADJ."""
+    head = tokenize(text)[0].name
+    tok = VOCAB[head]
+    if tok.family == "NEW":
+        w = ctx.words.get(head)
+        return "ADJ" if isinstance(w, Ostensive) else "VERB" if isinstance(w, Closure) else "NOUN"
+    if tok.family in ("R", "V") or (tok.ret and not tok.args):
+        return "NOUN"
+    if head in ("[", "{"):
+        return "NOUN"      # opens a list or record, which is a value
+    if tok.args:
+        tests = tok.ret == "BOOL" and any(a != "BOOL" for a in tok.args)
+        return "ADJ" if tests else "VERB"
+    return "FRAME"
 
 
 def _apply(f, x, ctx):
@@ -255,6 +292,17 @@ def _op(name, args, env, ctx):
         return vsa.sim(_vec(v[0]), _vec(v[1]))
     if name == "CLEAN":
         return _clean(_vec(v[0]), ctx)
+
+    if name == "SPAN":
+        a, b = v
+        _need(ctx.tokens is not None and kind(a) == kind(b) == "INT" and 0 <= a <= b < ctx.before)
+        try:
+            return quote(" ".join(ctx.tokens[a:b + 1]))
+        except SyntaxErr:
+            _fail()     # a span must be one complete expression, or one token
+    if name == "KIND":
+        _need(kind(v[0]) == "EXPR")
+        return Sym(category(v[0].text, ctx))
     raise ValueError(f"no implementation for {name}")
 
 

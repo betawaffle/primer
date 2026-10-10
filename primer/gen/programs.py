@@ -11,6 +11,7 @@ every function body uses the variable it binds, and IF never tests a
 constant.
 """
 from ..edit import replace, subtrees  # noqa: F401  (re-exported for generators)
+from ..values import Quote, Sym
 
 INT_RANGE = (-9, 20)
 
@@ -178,6 +179,8 @@ def size_ok(v, max_list=12, max_int=10**6):
         return len(v) <= max_list and all(size_ok(x) for x in v)
     if isinstance(v, dict):
         return len(v) <= 8 and all(size_ok(x) for x in v.values())
+    if isinstance(v, (Quote, Sym)):
+        return len(v.text.split()) <= 40 if isinstance(v, Quote) else True
     return False
 
 

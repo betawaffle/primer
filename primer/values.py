@@ -3,6 +3,7 @@
 Python representation of each primer type:
   BOOL bool · INT int (exact, unbounded) · NUM float · STR str · TIME datetime
   REC dict (str keys) · LIST list · NONE None · FUN Closure · VEC numpy array · ERR the ERR object
+  EXPR Quote (an expression as data) · SYM Sym (a symbol token used as a value, e.g. NOUN)
 """
 import datetime as dt
 import math
@@ -35,6 +36,23 @@ class Ostensive:
     negatives: list
 
 
+@dataclass(frozen=True)
+class Quote:
+    """An expression, or a single token, held as data instead of being evaluated
+    (QUOTE, WORD, SPAN). text is canonical text form, so equal quotes compare
+    equal; whole says it is one complete expression (shown as QUOTE text) rather
+    than a lone token that needs arguments (shown as WORD text). Build them with
+    syntax.quote(), which works out both."""
+    text: str
+    whole: bool
+
+
+@dataclass(frozen=True)
+class Sym:
+    """A symbol token used as a value, e.g. the categories KIND returns."""
+    name: str
+
+
 def kind(v):
     if v is ERR:
         return "ERR"
@@ -58,6 +76,10 @@ def kind(v):
         return "FUN"
     if isinstance(v, np.ndarray):
         return "VEC"
+    if isinstance(v, Quote):
+        return "EXPR"
+    if isinstance(v, Sym):
+        return "SYM"
     raise TypeError(f"not a primer value: {v!r}")
 
 
@@ -206,4 +228,8 @@ def show(v):
             return " ".join(["{", *(f"STR<{key}> {show(x)}" for key, x in v.items()), "}"])
     if k == "FUN":
         return v.name or "<function>"
+    if k == "EXPR":
+        return ("QUOTE " if v.whole else "WORD ") + v.text
+    if k == "SYM":
+        return v.name
     return k
