@@ -40,6 +40,10 @@ WRONG = [
     "BOS EVAL MUL INT<6> INT<7> RESULT INT<48> OOPS EVAL MUL INT<6> INT<7> RESULT INT<43> END",
     "BOS COST ADD INT<1> INT<2> INT<4> END",
     "BOS COST LET LAM APP V0 V0 APP V0 V0 INT<5> END",                                  # never finishes
+    "BOS NEXT GOAL LAM GT V0 INT<1> END",                                               # empty agenda
+    "BOS QUEUE INT<3> END",                                                             # not a goal or function
+    "BOS QUEUE LAM MUL V0 V0 NEXT DEF NEW3 LAM ADD V0 V0 END END",                      # not what was queued
+    "BOS QUEUE GOAL LAM GT V0 INT<1> QUEUE GOAL LAM LT V0 INT<1> NEXT GOAL LAM LT V0 INT<1> END",  # oldest first
 ]
 
 
@@ -77,6 +81,11 @@ class TestCore(unittest.TestCase):
         self.assertEqual(retracted_spans(s), [[6, 7]])
         self.assertEqual(VOCAB.by_id[ids[6]].name, "INT")
         self.assertEqual(VOCAB.by_id[ids[7]].name, "OOPS")
+
+    def test_agenda_carries_between_sequences(self):
+        s = "BOS NEXT GOAL LAM GT V0 INT<1> BUDGET INT<1> ACT DONE INT<2> OK END"
+        self.assertTrue(check(s).errors)
+        self.assertEqual(check(s, agenda=[("goal", "LAM GT V0 INT<1>")]).errors, [])
 
     def test_text_roundtrip(self):
         for src in ["ADD NUM<0.5> INT<3>", "MAP LAM MUL V0 V0 [ INT<1> INT<2> ]",

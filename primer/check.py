@@ -18,6 +18,8 @@ Items:
   PATCH word [AT k] REPLACE old new | [AT k] WRAP old OP args... ... END
   EVAL expr RESULT wrong OOPS      a thought withdrawn: wrong must really be wrong
   COST expr n                      expr takes n interpreter steps
+  QUEUE GOAL pred | QUEUE fun      put a side idea on the agenda
+  NEXT  GOAL pred | NEXT DEF word fun END   take up the oldest agenda item
 """
 import itertools
 import math
@@ -113,6 +115,16 @@ def parse_items(toks):
         elif n == "OOPS":
             p.next()
             items.append(("oops",))
+        elif n == "QUEUE":
+            p.next()
+            if p.at("GOAL"):
+                p.next()
+                items.append(("queue", "goal", p.expr()))
+            else:
+                items.append(("queue", "word", p.expr()))
+        elif n == "NEXT":
+            p.next()
+            items.append(("next",))
         elif n == "COST":
             p.next()
             items.append(("cost", p.expr(), p.expr()))
@@ -251,14 +263,18 @@ def _bits(p, outcome):
     return -math.log2(q) if q > 0 else math.inf
 
 
-def check(text, truth=None, bets="exact"):
+def check(text, truth=None, bets="exact", agenda=()):
     """Check one sequence. truth maps an example-defined word to the text of
     a predicate that defines it, for checking ASK answers about it.
 
     bets="exact" (training data) requires every draw bet to state the exact
     chance; a bet on the sequence's own action can't be checked that way and
     is reported as unverified. bets="score" (grading a model) accepts any
-    probability and only scores it: see Report.scores."""
+    probability and only scores it: see Report.scores.
+
+    agenda is what was already queued when the sequence starts, as
+    ("goal" | "word", text) pairs, oldest first, for a sequence that begins
+    with NEXT; the harness keeps the agenda between sequences."""
     rep = Report(text)
     try:
         items = sequence_items(text)
@@ -272,6 +288,7 @@ def check(text, truth=None, bets="exact"):
     defs, deferred, links = {}, [], {}
     ep = {"goal": None, "budget": None, "pending": None}
     bet = {"open": None, "settled": None}
+    queue, taking = [tuple(a) for a in agenda], None   # taking: the agenda item NEXT promised
 
     def err(msg):
         rep.errors.append(msg)
@@ -299,6 +316,13 @@ def check(text, truth=None, bets="exact"):
             if isinstance(part, tuple) and part is not answer:
                 remember_literals(part, ctx)
         retracted = tag == "eval" and idx + 1 < len(items) and items[idx + 1] == ("oops",)
+        if taking:
+            want_kind, want_text = taking
+            taking = None
+            ok = (want_kind == "goal" and tag == "goal" and unparse(it[1]) == want_text) or \
+                 (want_kind == "word" and tag == "def" and unparse(it[2]) == want_text)
+            if not ok:
+                err(f"{where}: NEXT promised {'GOAL ' if want_kind == 'goal' else 'DEF of '}{want_text}")
 
         if tag in ("implicit", "eval") and not (tag == "eval" and it[2] is None):
             expr, expected = it[1], it[2]
@@ -323,6 +347,21 @@ def check(text, truth=None, bets="exact"):
             prev = items[idx - 1] if idx else None
             if not prev or prev[0] != "eval" or prev[2] is None:
                 err(f"{where}: OOPS follows EVAL ... RESULT, the thought it withdraws")
+
+        elif tag == "queue":
+            _, what, node = it
+            if not isinstance(value_of(node), Closure):
+                err(f"{where}: QUEUE takes a goal predicate or a function")
+                continue
+            queue.append((what, unparse(node)))
+        elif tag == "next":
+            if ep["pending"]:
+                err(f"{where}: the current action has no outcome yet")
+            if not queue:
+                err(f"{where}: NEXT with nothing on the agenda")
+                continue
+            taking = queue.pop(0)
+            ep.update(goal=None, budget=None)
 
         elif tag == "cost":
             _, expr, n = it
@@ -537,6 +576,8 @@ def check(text, truth=None, bets="exact"):
         err("sequence ends before the last action's outcome")
     if bet["open"]:
         err("sequence ends before the last bet is settled")
+    if taking:
+        err("sequence ends right after NEXT")
 
     # Resolve ASKs about example-defined words.
     for name, src in (truth or {}).items():

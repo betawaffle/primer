@@ -1,6 +1,6 @@
 """Write generated training data as JSON-lines shards.
 
-    python3 -m primer.gen --groups 1-6,10-12 --count 100000 --out data/ --workers 16
+    python3 -m primer.gen --groups 1-6,10-13 --count 100000 --out data/ --workers 16
 
 Each line: {"group", "text", "truth", "encoder", "ids", "payloads"}, plus
 "heldout" (the rules it matches) in the test split. --split train (the
@@ -26,7 +26,7 @@ from ..split import RULES, heldout
 from .groups import GROUPS, generate
 from .heldout import generate_test
 
-DEFAULT_WEIGHTS = {1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 3, 10: 3, 11: 4, 12: 4}
+DEFAULT_WEIGHTS = {1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 3, 10: 3, 11: 4, 12: 4, 13: 2}
 
 
 def parse_groups(spec):
@@ -87,7 +87,7 @@ def _dedupe(path, order, seen):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python3 -m primer.gen", description=__doc__.split("\n\n")[0])
-    ap.add_argument("--groups", default="1-6,10-12", help="e.g. 1-6,10-12 or 2,4,5")
+    ap.add_argument("--groups", default="1-6,10-13", help="e.g. 1-6,10-13 or 2,4,5")
     ap.add_argument("--count", type=int, default=1000, help="sequences in total")
     ap.add_argument("--shard-size", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=0)

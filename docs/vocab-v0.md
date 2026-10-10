@@ -131,6 +131,12 @@ Added after v0 (ids 167–170). Programming is mostly fixing almost-right code, 
 
 Added after v0 (ids 171–172). Reasoning traces are written in primer itself: `EVAL … RESULT` claims made before acting, each one checkable. `OOPS` withdraws a wrong one (no training loss on the wrong value). `COST` is the price of a computation in steps, so the model can learn when to stop thinking and act.
 
+## 13. Agenda (2)
+
+`QUEUE` `NEXT`
+
+Added after v0 (ids 173–174), from Andy's idea: some thoughts aren't steps toward the current goal but are worth coming back to. `QUEUE` writes one down (a goal, or a candidate word, which makes queuing the trigger for library learning) and `NEXT` takes up the oldest. The agenda lives outside the model. A later `FORK` would start an idea in parallel instead of deferring it.
+
 ## Example
 
 ```
