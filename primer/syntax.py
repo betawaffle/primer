@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass
 
 from .values import Quote, Sym, parse_payload, show
-from .vocab import VOCAB
+from .vocab import MODEL_ONLY, VOCAB
 
 PAYLOAD_KINDS = {"NUM", "INT", "STR", "TIME", "REC"}
 SPECIAL_FORMS = {"LAM", "LET", "QUOTE", "TOK", "PART"}   # parsed by hand, not by arity
@@ -27,6 +27,7 @@ _TOKEN = re.compile(r"(\w+)[<⟨](.*?)[>⟩]|(\S+)")
 class Tok:
     name: str
     payload: str | None = None
+    ref: int | None = None   # REF tokens in the model form: the position of the binder
 
     def __str__(self):
         return self.name if self.payload is None else f"{self.name}<{self.payload}>"
@@ -42,13 +43,22 @@ def tokenize(text):
         name, payload = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), None)
         if name not in VOCAB:
             raise SyntaxErr(f"unknown token {name!r}")
+        if name in MODEL_ONLY:
+            raise SyntaxErr(f"{name} is only in the model's id form; text writes names like V0, NEW3, R3")
         toks.append(Tok(name, payload))
     return toks
 
 
 class Parser:
+    """Parses expressions from a token list. While it goes, it records which
+    binder (LAM or LET) each variable belongs to: links maps a variable's
+    position to its binder's position, or to None for a variable that is free
+    here (inside a quote, say)."""
+
     def __init__(self, toks, pos=0):
         self.toks, self.pos = toks, pos
+        self.binders = []   # positions of the enclosing LAM / LET, innermost last
+        self.links = {}
 
     def peek(self, offset=0):
         i = self.pos + offset
@@ -72,8 +82,11 @@ class Parser:
         return t is not None and t.name in names
 
     def expr(self):
+        at = self.pos
         t = self.next()
         n, tok = t.name, VOCAB[t.name]
+        if n in MODEL_ONLY:     # the model's id form: names are leaves, only their extent matters here
+            return ("ref", t.ref)
         if n in PAYLOAD_KINDS:
             if t.payload is None:
                 raise SyntaxErr(f"{n} needs a payload")
@@ -92,7 +105,9 @@ class Parser:
         if n == "HOLE":
             return ("hole",)
         if tok.family == "V":
-            return ("var", tok.index)
+            i = tok.index
+            self.links[at] = self.binders[-1 - i] if i < len(self.binders) else None
+            return ("var", i)
         if tok.family == "NEW":
             return ("word", n)
         if tok.family == "R":
@@ -118,9 +133,9 @@ class Parser:
                 raise SyntaxErr("record needs key value pairs")
             return ("rec", items)
         if n == "LAM":
-            return ("lam", self.expr())
+            return ("lam", self.bound(at))
         if n == "LET":
-            return ("let", self.expr(), self.expr())
+            return ("let", self.expr(), self.bound(at))
         if n == "QUOTE":   # exactly one complete expression: arities say where it ends
             return ("lit", Quote(unparse(self.expr()), True))
         if n == "TOK":     # exactly one token, arguments or not
@@ -135,6 +150,15 @@ class Parser:
         if tok.args:  # an operator: fixed arity from the type table
             return ("op", n, [self.expr() for _ in range(tok.arity)])
         raise SyntaxErr(f"{t} cannot start an expression")
+
+
+    def bound(self, binder):
+        """An expression inside the scope of the binder at that position."""
+        self.binders.append(binder)
+        try:
+            return self.expr()
+        finally:
+            self.binders.pop()
 
 
 def parse_expr(text):
