@@ -1,0 +1,237 @@
+"""Model v0: a small decoder-only transformer for primer sequences.
+
+What it takes from the design threads (docs/decisions.md):
+
+- Embedding = learned half ‖ designed half. The designed half is the
+  token's VSA vector, projected by a fixed matrix (primer/batches.py), and
+  never trains. Rows are tied: the same table reads a token and scores it.
+- Names are pointers. A REF reads its binder through a per-head attention
+  bias on the edge REF -> binder, and the model writes a REF by pointing:
+  a pointer head scores earlier binder positions of the same sequence.
+- Order: RoPE on the stable position (any start offset; angles are taken
+  mod 2π in float64 so large offsets lose nothing).
+- Elapsed time: some planes of every head rotate by event time instead.
+  Unknown time zeroes those rotated planes and sets a "time known" bit.
+- Every head has a learned gate per frequency band, for order and time
+  planes alike: g mixes the band's score between rotated (RoPE, g=1) and
+  unrotated (NoPE, g=0), so each head learns its own reach. Gates start
+  open. Mixing is exact: q and k carry [sqrt(g)·rot(x), sqrt(1-g)·x], so
+  q·k = g·(rotated score) + (1-g)·(plain score), and depends on positions
+  only through their difference.
+- Payload values (NUM, INT, STR, TIME, REC, SLOT) are predicted as their
+  designed vector by a regression head. Exact decoding (dec_int, dec_num)
+  needs the full VSA vector and is later work.
+
+Not here yet: eviction masks (gap and mask mode), a times column in shards,
+constrained decoding, local-window heads.
+"""
+import math
+from dataclasses import asdict, dataclass
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from .batches import BINDERS, COMPUTED, N_VOCAB, REF
+
+
+@dataclass
+class Config:
+    d: int = 256                # model width
+    d_design: int = 64          # designed (VSA) half of each embedding
+    layers: int = 6
+    heads: int = 8
+    mlp: int = 4                # MLP width multiple (SwiGLU, so 2/3 of it per branch)
+    time_planes: int = 2        # rotation planes per head driven by time (of head_dim/2)
+    order_bands: int = 3        # gate bands for order planes: fast, medium, slow
+    time_bands: int = 2
+    rope_base: float = 10000.0
+    time_periods: tuple = (1.0, 2.4e6)   # seconds: 1 s to about four weeks
+    gate_init: float = 4.0      # sigmoid(4) ≈ 0.98: gates start open
+    vocab: int = N_VOCAB
+
+    @property
+    def head_dim(self):
+        return self.d // self.heads
+
+
+def _bands(n, k):
+    """Band index for each of n planes split into k contiguous bands."""
+    k = max(1, min(k, n))
+    return torch.arange(n) * k // max(n, 1)
+
+
+class Rotary(nn.Module):
+    """Order and time planes with per-head, per-band gates."""
+
+    def __init__(self, c):
+        super().__init__()
+        planes = c.head_dim // 2
+        self.n_time = c.time_planes
+        self.n_order = planes - c.time_planes
+        assert self.n_order > 0 and self.n_time >= 0
+        order = c.rope_base ** (-torch.arange(self.n_order, dtype=torch.float64) / self.n_order)
+        lo, hi = c.time_periods
+        periods = torch.logspace(math.log10(lo), math.log10(hi), self.n_time, dtype=torch.float64)
+        self.register_buffer("w_order", order, persistent=False)
+        self.register_buffer("w_time", 2 * math.pi / periods, persistent=False)
+        band = torch.cat([_bands(self.n_order, c.order_bands),
+                          _bands(self.n_time, c.time_bands) + min(c.order_bands, self.n_order)])
+        self.register_buffer("band", band, persistent=False)
+        n_bands = int(band.max()) + 1 if len(band) else 0
+        self.gate = nn.Parameter(torch.full((c.heads, n_bands), c.gate_init))
+
+    def angles(self, pos, time, known):
+        """cos, sin of shape (B, T, planes), plus a (B, T, planes) mask that
+        zeroes rotated time planes where time is unknown."""
+        a = torch.cat([pos.double()[..., None] * self.w_order,
+                       time.double()[..., None] * self.w_time], -1) % (2 * math.pi)
+        on = torch.ones_like(a, dtype=torch.float32)
+        on[..., self.n_order:] = known[..., None].float()
+        return a.cos().float(), a.sin().float(), on
+
+    def gates(self):
+        return torch.sigmoid(self.gate)[:, self.band]       # (H, planes)
+
+    def forward(self, x, cos, sin, on):
+        """x: (B, H, T, head_dim) -> (B, H, T, 2*head_dim) gated mix of rotated and plain."""
+        x1, x2 = x[..., 0::2], x[..., 1::2]                 # (B, H, T, planes)
+        c, s, m = cos[:, None], sin[:, None], on[:, None]
+        r1, r2 = (x1 * c - x2 * s) * m, (x1 * s + x2 * c) * m
+        g = self.gates()[None, :, None, :]
+        a, b = g.sqrt(), (1 - g).sqrt()
+        return torch.cat([a * r1, a * r2, b * x1, b * x2], -1)
+
+
+class Attention(nn.Module):
+    def __init__(self, c):
+        super().__init__()
+        self.c = c
+        self.qkv = nn.Linear(c.d, 3 * c.d, bias=False)
+        self.out = nn.Linear(c.d, c.d, bias=False)
+        self.ref_bias = nn.Parameter(torch.zeros(c.heads))  # how much each head attends REF -> binder
+        self.rotary = Rotary(c)
+
+    def forward(self, x, rope, mask, ref_edge):
+        B, T, _ = x.shape
+        H, hd = self.c.heads, self.c.head_dim
+        q, k, v = self.qkv(x).view(B, T, 3, H, hd).permute(2, 0, 3, 1, 4)
+        q, k = self.rotary(q, *rope), self.rotary(k, *rope)
+        bias = (mask + ref_edge * self.ref_bias[None, :, None, None]).to(q.dtype)
+        y = F.scaled_dot_product_attention(q, k, v, attn_mask=bias, scale=1 / math.sqrt(hd))
+        return self.out(y.transpose(1, 2).reshape(B, T, -1))
+
+
+class MLP(nn.Module):
+    def __init__(self, c):
+        super().__init__()
+        h = int(c.mlp * c.d * 2 / 3)
+        self.up = nn.Linear(c.d, 2 * h, bias=False)
+        self.down = nn.Linear(h, c.d, bias=False)
+
+    def forward(self, x):
+        a, b = self.up(x).chunk(2, -1)
+        return self.down(F.silu(a) * b)
+
+
+class Block(nn.Module):
+    def __init__(self, c):
+        super().__init__()
+        self.n1, self.n2 = nn.RMSNorm(c.d), nn.RMSNorm(c.d)
+        self.attn, self.mlp = Attention(c), MLP(c)
+
+    def forward(self, x, rope, mask, ref_edge):
+        x = x + self.attn(self.n1(x), rope, mask, ref_edge)
+        return x + self.mlp(self.n2(x))
+
+
+class Model(nn.Module):
+    def __init__(self, c, design_table):
+        super().__init__()
+        self.c = c
+        self.learned = nn.Embedding(c.vocab, c.d - c.d_design)
+        nn.init.normal_(self.learned.weight, std=1.0)
+        self.register_buffer("design_table", torch.as_tensor(design_table))   # (vocab, d_design), fixed
+        self.time_known = nn.Parameter(torch.zeros(c.d))
+        self.blocks = nn.ModuleList(Block(c) for _ in range(c.layers))
+        self.norm = nn.RMSNorm(c.d)
+        self.ptr_q = nn.Linear(c.d, c.d, bias=False)
+        self.ptr_k = nn.Linear(c.d, c.d, bias=False)
+        self.payload = nn.Linear(c.d, c.d_design, bias=False)
+        for b in self.blocks:          # residual branches start small
+            nn.init.normal_(b.attn.out.weight, std=0.02 / math.sqrt(2 * c.layers))
+            nn.init.normal_(b.mlp.down.weight, std=0.02 / math.sqrt(2 * c.layers))
+        self.binders = torch.tensor(sorted(BINDERS))
+        self.computed = torch.tensor(sorted(COMPUTED))
+
+    def rows(self):
+        """The tied table: every token's learned half ‖ designed half."""
+        return torch.cat([self.learned.weight, self.design_table], -1)
+
+    def forward(self, b):
+        """b: a batch from primer.batches as tensors. Returns hidden states (B, T, d)
+        and the same-sequence causal mask (B, T, T) for the heads."""
+        ids, seq = b["ids"], b["seq"]
+        x = torch.cat([self.learned(ids), b["design"]], -1)
+        x = x + b["time_known"][..., None].float() * self.time_known
+        same = (seq[:, :, None] == seq[:, None, :]) & (seq[:, :, None] >= 0)
+        causal = torch.ones_like(same[0]).tril()
+        allowed = same & causal
+        allowed |= torch.eye(ids.shape[1], dtype=torch.bool, device=ids.device)   # PAD rows see themselves
+        mask = torch.zeros(allowed.shape, dtype=x.dtype, device=x.device).masked_fill(~allowed, -math.inf)[:, None]
+        ref = b["ref"]
+        edge = torch.zeros_like(allowed, dtype=x.dtype)
+        has = ref >= 0
+        bi, ti = has.nonzero(as_tuple=True)
+        edge[bi, ti, ref[has]] = 1.0
+        rope = self.blocks[0].attn.rotary.angles(b["pos"], b["time"], b["time_known"])
+        for blk in self.blocks:
+            x = blk(x, rope, mask, edge[:, None])
+        return self.norm(x), allowed
+
+    def heads(self, h, b, allowed):
+        """Token logits (B, T, vocab), pointer logits (B, T, T) over earlier binders
+        of the same sequence (key j <= i, for the REF at i+1), payload vectors."""
+        logits = h @ self.rows().T / math.sqrt(self.c.d)
+        is_binder = torch.isin(b["ids"], self.binders.to(h.device))
+        ok = allowed & is_binder[:, None, :]
+        ptr = (self.ptr_q(h) @ self.ptr_k(h).transpose(1, 2)) / math.sqrt(self.c.d)
+        ptr = ptr.masked_fill(~ok, -math.inf)
+        return logits, ptr, self.payload(h)
+
+    def loss(self, b):
+        """Next-token loss, plus pointer loss where the next token is a REF with a
+        binder, plus payload loss (1 - cosine) where it is a computed token."""
+        h, allowed = self(b)
+        logits, ptr, pay = self.heads(h, b, allowed)
+        ids, seq = b["ids"], b["seq"]
+        valid = (seq[:, 1:] == seq[:, :-1]) & (seq[:, 1:] >= 0) & b["loss"][:, 1:]
+        tgt = ids[:, 1:]
+        out = {}
+        ce = F.cross_entropy(logits[:, :-1].transpose(1, 2), tgt, reduction="none")
+        out["token"] = (ce * valid).sum() / valid.sum().clamp(min=1)
+        out["token_acc"] = ((logits[:, :-1].argmax(-1) == tgt) & valid).sum() / valid.sum().clamp(min=1)
+
+        pv = valid & (tgt == REF) & (b["ref"][:, 1:] >= 0)
+        if pv.any():
+            p, t = ptr[:, :-1][pv], b["ref"][:, 1:][pv]
+            out["pointer"] = F.cross_entropy(p, t)
+            out["pointer_acc"] = (p.argmax(-1) == t).float().mean()
+        else:
+            out["pointer"] = out["pointer_acc"] = torch.zeros((), device=h.device)
+
+        cv = valid & torch.isin(tgt, self.computed.to(h.device)) & (b["design"][:, 1:].abs().sum(-1) > 0)
+        if cv.any():
+            out["payload"] = (1 - F.cosine_similarity(pay[:, :-1][cv], b["design"][:, 1:][cv], dim=-1)).mean()
+        else:
+            out["payload"] = torch.zeros((), device=h.device)
+        out["loss"] = out["token"] + out["pointer"] + out["payload"]
+        return out
+
+    def describe(self):
+        n = sum(p.numel() for p in self.parameters())
+        return f"{n / 1e6:.2f}M parameters, {asdict(self.c)}"
+
+
+def to_torch(batch, device):
+    return {k: torch.as_tensor(v, device=device) for k, v in batch.items()}
