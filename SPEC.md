@@ -104,6 +104,7 @@ Every other expression is *used*: it stands for its value. A quote *mentions* on
 - Two quotes are equal when their text is (literals in canonical form). A quote never equals the value of the expression it holds.
 - `KIND q` is the part of speech of the token heading q, from the type table: values, slots, variables, lists and records are `NOUN`; operators are `VERB`, except tests (they return `BOOL` from arguments that aren't all `BOOL`, e.g. `LT`, `EQ`), which are `ADJ`; connectives like `AND` are `VERB`; everything else (syntax, teaching and episode tokens) is `MARK`. A `NEW` word is classed by what it is now: a function is a `VERB`, a word known from examples an `ADJ`, otherwise a `NOUN`.
 - Vectors: a quote is the bundle of position ⊛ token atom, bound to an `EXPR` role; a symbol is its own atom.
+- Known corners with no fix yet (HOLE can't be mentioned, fillers of any shape, quoting unseen words): [docs/quoting-pitfalls.md](docs/quoting-pitfalls.md).
 
 ## Edits
 
