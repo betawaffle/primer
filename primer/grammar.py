@@ -53,13 +53,8 @@ def _statements(body, closed):
 
 def viable(toks):
     """Whether some continuation makes these text tokens a whole sequence:
-    BOS statement* EOS, then a HOLE's filler and END if the body has a HOLE,
-    then any number of PADs."""
-    names = [t.name for t in toks]
-    if "PAD" in names:
-        k = names.index("PAD")
-        return all(n == "PAD" for n in names[k:]) and _whole(toks[:k])
-    return _prefix(toks, names)
+    BOS statement* EOS, then a HOLE's filler and END if the body has a HOLE."""
+    return _prefix(toks, [t.name for t in toks])
 
 
 def _prefix(toks, names, closed=False):
@@ -95,12 +90,15 @@ def _whole(toks):
 def allowed(prefix):
     """Ids the model may emit after these text tokens. A name in text is a
     binder or a REF in the id form, so V0 stands for REF, a fresh NEW for NEW,
-    a NEW already seen for REF, a fresh slot for SLOT, a seen bare slot for REF."""
+    a NEW already seen for REF, a fresh slot for SLOT, a seen bare slot for REF.
+    DEF<NEW3> and a bare DEF (after TOK) are both DEF."""
     prefix = list(prefix)
     words = {t.name for t in prefix if VOCAB[t.name].family == "NEW"}
+    words |= {t.payload for t in prefix if VOCAB[t.name].binds and t.payload}
     slots = {t.name for t in prefix if VOCAB[t.name].family == "R"}
     cands = [(Tok(n, _DUMMY.get(n)), n) for n in _PLAIN]
     cands += [(Tok("V0"), "REF"), (Tok("NEW999999"), "NEW"), (Tok("R999999", "INT 1"), "SLOT")]
+    cands += [(Tok(t.name, "NEW999999"), t.name) for t in VOCAB.tokens if t.binds]
     cands += [(Tok(w), "REF") for w in words] + [(Tok(s), "REF") for s in slots]
     out = set()
     for tok, name in cands:

@@ -33,9 +33,9 @@ class TestGenerators(unittest.TestCase):
     def test_heldout_rules(self):
         self.assertEqual(heldout("BOS MAP LAM FOLD LAM LAM ADD V1 V0 V0 RANGE INT<3> [ INT<1> ] [ INT<1> ] EOS"),
                          ["fold_in_map"])
-        self.assertEqual(heldout("BOS DEF NEW4 LAM ADD V0 V0 END PATCH NEW4 AT INT<0> WRAP V0 NEG END EOS"), ["wrap_at"])
-        self.assertEqual(heldout("BOS DEF NEW4 LAM ADD V0 V0 END PATCH NEW4 AT INT<0> REPLACE V0 INT<1> END EOS"), [])
-        self.assertEqual(heldout("BOS DEF NEW1 LAM LT V0 INT<5> END BET NUM<0.5> NEW1 [ INT<1> INT<9> ] "
+        self.assertEqual(heldout("BOS DEF<NEW4> LAM ADD V0 V0 PATCH NEW4 AT INT<0> WRAP V0 NEG END EOS"), ["wrap_at"])
+        self.assertEqual(heldout("BOS DEF<NEW4> LAM ADD V0 V0 PATCH NEW4 AT INT<0> REPLACE V0 INT<1> END EOS"), [])
+        self.assertEqual(heldout("BOS DEF<NEW1> LAM LT V0 INT<5> BET NUM<0.5> NEW1 [ INT<1> INT<9> ] "
                                  "DRAW INT<9> NO EOS"), ["bet_on_word"])
 
     def test_test_split_checks_and_matches(self):

@@ -4,7 +4,7 @@ Companion to [SPEC.md](../SPEC.md). Hand-written samples showing what the genera
 
 ## Reading the notation
 
-- Each sample is one training sequence, `BOS … EOS`. `END` only closes a form's body, as in `DEF word expr END`.
+- Each sample is one training sequence, `BOS … EOS`. `END` only closes a body of variable length, as in `PATCH word edit… END`.
 - `NUM⟨3⟩`, `INT⟨7⟩`, `STR⟨fast⟩`, `TIME⟨2026-10-09 15:30⟩` and `REC⟨{a:1, b:2}⟩` are **one token each**. The part in ⟨⟩ is the content its vector is computed from, not extra tokens.
 - `R0⟨…⟩` is a slot whose content the harness filled in. Names like `R0`, `V0` and `NEW0` are for reading; the model sees a pointer back to where each was bound, never the number.
 - Every token has a fixed arity, so a parser always knows where an expression ends.
@@ -16,7 +16,7 @@ Companion to [SPEC.md](../SPEC.md). Hand-written samples showing what the genera
 
 ## syntax
 
-`BOS EOS END PAD [ ] { } HOLE`
+`BOS EOS END [ ] { } HOLE`
 
 There's nothing to bracket yet, so this group only teaches shape: balanced nesting, and infilling via `HOLE`.
 
@@ -28,9 +28,7 @@ BOS [ { } [ ] ] EOS
 BOS [ [ HOLE ] EOS ] END
 BOS [ { HOLE ] EOS } END
 BOS [ HOLE ] EOS [ ] END
-BOS [ ] EOS PAD PAD PAD PAD
 ```
-The last one is a short sequence padded to batch length. `PAD` is masked out of the loss and never predicted.
 
 ## logic
 
@@ -173,12 +171,12 @@ BOS EVAL ADD NUM⟨2⟩ HOLE RESULT NUM⟨5⟩ EOS NUM⟨3⟩ END
 
 Defining a word, using it, and the round-trip check. These are all **in one context**: `NEW0` means "square" only in this sequence. The model never sees the number, only a pointer back to the `DEF`, so it has to learn *how to learn a word from its definition* rather than memorize one:
 ```
-BOS DEF NEW0 LAM MUL V0 V0 END
+BOS DEF<NEW0> LAM MUL V0 V0
     EVAL APP NEW0 INT⟨7⟩ RESULT INT⟨49⟩
     EVAL MAP NEW0 [ INT⟨2⟩ INT⟨3⟩ ] RESULT [ INT⟨4⟩ INT⟨9⟩ ]
     EXPAND NEW0 RESULT LAM MUL V0 V0 EOS
 
-BOS DEF NEW1 LAM LAM IF GT V1 V0 V1 V0 END
+BOS DEF<NEW1> LAM LAM IF GT V1 V0 V1 V0
     EVAL APP APP NEW1 INT⟨3⟩ INT⟨8⟩ RESULT INT⟨8⟩
     SAME NEW1 LAM LAM MAX V1 V0
     EOS
@@ -186,8 +184,8 @@ BOS DEF NEW1 LAM LAM IF GT V1 V0 V1 V0 END
 
 Words built from earlier words, which is the incremental-vocabulary idea in miniature:
 ```
-BOS DEF NEW0 LAM MUL V0 V0 END
-    DEF NEW1 LAM FOLD LAM LAM ADD V1 V0 INT⟨0⟩ MAP NEW0 V0 END
+BOS DEF<NEW0> LAM MUL V0 V0
+    DEF<NEW1> LAM FOLD LAM LAM ADD V1 V0 INT⟨0⟩ MAP NEW0 V0
     EVAL APP NEW1 [ INT⟨1⟩ INT⟨2⟩ INT⟨3⟩ ] RESULT INT⟨14⟩
     EXPAND NEW1 RESULT LAM FOLD LAM LAM ADD V1 V0 INT⟨0⟩ MAP NEW0 V0 EOS
 ```
@@ -204,15 +202,15 @@ BOS EX [ INT⟨1⟩ INT⟨2⟩ INT⟨5⟩ ] IS NEW3   EX [ INT⟨0⟩ INT⟨9⟩
     EX [ INT⟨3⟩ INT⟨1⟩ ] ISNOT NEW3
     ASK [ INT⟨4⟩ INT⟨6⟩ INT⟨6⟩ ] NEW3 RESULT YES
     ASK [ INT⟨2⟩ INT⟨1⟩ INT⟨3⟩ ] NEW3 RESULT NO
-    DEF NEW4 LAM EQ SORT V0 V0 END
+    DEF<NEW4> LAM EQ SORT V0 V0
     SAME NEW3 NEW4 EOS
 ```
 `NEW2` is "even". `NEW3` is "sorted": the model infers it from examples and then states that it matches a definition. That's the bridge from an example-defined word to a program-defined one.
 
 Relations used for embedding constraints:
 ```
-BOS DEF NEW5 LAM ADD V0 V0 END  DEF NEW6 LAM MUL V0 INT⟨2⟩ END  SAME NEW5 NEW6 EOS
-BOS DEF NEW7 LAM ADD V0 INT⟨1⟩ END  DEF NEW8 LAM SUB V0 INT⟨1⟩ END  DIFF NEW7 NEW8 EOS
+BOS DEF<NEW5> LAM ADD V0 V0  DEF<NEW6> LAM MUL V0 INT⟨2⟩  SAME NEW5 NEW6 EOS
+BOS DEF<NEW7> LAM ADD V0 INT⟨1⟩  DEF<NEW8> LAM SUB V0 INT⟨1⟩  DIFF NEW7 NEW8 EOS
 BOS DIFF STR⟨fast⟩ STR⟨slow⟩ EOS
 ```
 Besides being training data, `SAME`/`DIFF` facts are mined to produce the relational constraints on the embedding table from Round 2.
@@ -237,7 +235,7 @@ BOS KIND TOK ADD VERB
 ```
 A defined word is classed by what it is: a function is a verb, a word known from examples (a test) is an adjective:
 ```
-BOS DEF NEW1 LAM MUL V0 V0 END KIND TOK NEW1 VERB
+BOS DEF<NEW1> LAM MUL V0 V0 KIND TOK NEW1 VERB
     EX INT⟨4⟩ IS NEW2 KIND TOK NEW2 ADJ EOS
 ```
 `SPAN a b` points back at tokens a to b of this sequence (BOS is 0), so the model can talk about what it already wrote without copying it. The span must be one expression or one token:
@@ -254,20 +252,20 @@ BOS ADD INT⟨2⟩ MUL INT⟨3⟩ INT⟨4⟩ INT⟨14⟩
 
 A definition that fails its tests, a patch, and the tests passing:
 ```
-BOS DEF NEW3 LAM ADD V0 INT⟨2⟩ END
+BOS DEF<NEW3> LAM ADD V0 INT⟨2⟩
     EQ MAP NEW3 [ INT⟨1⟩ INT⟨2⟩ ] [ INT⟨4⟩ INT⟨5⟩ ] FALSE
     PATCH NEW3 REPLACE INT⟨2⟩ INT⟨3⟩ END
     EQ MAP NEW3 [ INT⟨1⟩ INT⟨2⟩ ] [ INT⟨4⟩ INT⟨5⟩ ] TRUE EOS
 ```
 `WRAP` puts an operator around a subexpression, which becomes its first argument:
 ```
-BOS DEF NEW3 LAM ADD V0 INT⟨2⟩ END
+BOS DEF<NEW3> LAM ADD V0 INT⟨2⟩
     PATCH NEW3 WRAP V0 MUL INT⟨2⟩ END
     EXPAND NEW3 RESULT LAM ADD MUL V0 INT⟨2⟩ INT⟨2⟩ EOS
 ```
 When the target occurs more than once, `AT` says which occurrence (counting from 0, in reading order). Several edits can share one `PATCH`:
 ```
-BOS DEF NEW0 LAM ADD V0 V0 END
+BOS DEF<NEW0> LAM ADD V0 V0
     PATCH NEW0 AT INT⟨1⟩ WRAP V0 NEG END
     EVAL APP NEW0 INT⟨5⟩ RESULT INT⟨0⟩
     PATCH NEW0 REPLACE NEG V0 INT⟨1⟩ REPLACE ADD V0 INT⟨1⟩ MUL V0 INT⟨2⟩ END
@@ -275,7 +273,7 @@ BOS DEF NEW0 LAM ADD V0 V0 END
 ```
 Synthesizing the fix: any filler that makes the tests pass is correct.
 ```
-BOS DEF NEW1 LAM MUL V0 INT⟨3⟩ END
+BOS DEF<NEW1> LAM MUL V0 INT⟨3⟩
     EQ MAP NEW1 [ INT⟨1⟩ INT⟨2⟩ ] [ INT⟨2⟩ INT⟨4⟩ ] FALSE
     PATCH NEW1 REPLACE INT⟨3⟩ HOLE END
     EQ MAP NEW1 [ INT⟨1⟩ INT⟨2⟩ ] [ INT⟨2⟩ INT⟨4⟩ ] TRUE EOS INT⟨2⟩ END
@@ -314,7 +312,7 @@ Dividing by zero gives `ERR`, and submitting 50 gives `ERR` because it doesn't s
 
 Using a word defined earlier in the episode:
 ```
-BOS DEF NEW0 LAM AND GT V0 INT⟨1⟩ EQ LEN FILTER LAM IF GT V0 INT⟨1⟩ EQ INT⟨0⟩ SUB V1 MUL V0 DIV V1 V0 FALSE RANGE V0 INT⟨0⟩ END
+BOS DEF<NEW0> LAM AND GT V0 INT⟨1⟩ EQ LEN FILTER LAM IF GT V0 INT⟨1⟩ EQ INT⟨0⟩ SUB V1 MUL V0 DIV V1 V0 FALSE RANGE V0 INT⟨0⟩
     GOAL LAM AND APP NEW0 V0 GT V0 INT⟨20⟩   BUDGET INT⟨3⟩
     ACT EVAL FILTER LAM AND APP NEW0 V0 GT V0 INT⟨20⟩ RANGE INT⟨30⟩
     OBS [ INT⟨23⟩ INT⟨29⟩ ]   BUDGET INT⟨2⟩
@@ -366,7 +364,7 @@ BOS BET NUM⟨0.35⟩ LAM GT V0 INT⟨12⟩ RANGE INT⟨20⟩
 ```
 Betting on a word, and a certain outcome costs no surprise:
 ```
-BOS DEF NEW4 LAM LT V0 INT⟨5⟩ END
+BOS DEF<NEW4> LAM LT V0 INT⟨5⟩
     BET NUM⟨0.5⟩ NEW4 [ INT⟨1⟩ INT⟨9⟩ ] DRAW INT⟨9⟩ NO SURPRISE NUM⟨1⟩
     BET NUM⟨1⟩ NEW4 [ INT⟨1⟩ INT⟨2⟩ ] DRAW INT⟨2⟩ YES SURPRISE NUM⟨0⟩ EOS
 ```
@@ -393,7 +391,7 @@ A chunk that keeps coming up is queued as a candidate word; taking it up means d
 BOS EVAL APP LAM MUL V0 V0 INT⟨3⟩ RESULT INT⟨9⟩
     EVAL APP LAM MUL V0 V0 INT⟨4⟩ RESULT INT⟨16⟩
     QUEUE LAM MUL V0 V0
-    NEXT DEF NEW3 LAM MUL V0 V0 END
+    NEXT DEF<NEW3> LAM MUL V0 V0
     EVAL APP NEW3 INT⟨5⟩ RESULT INT⟨25⟩ EOS
 ```
 

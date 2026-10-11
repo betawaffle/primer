@@ -19,7 +19,7 @@ def _parse(text):
 
 class TestForms(unittest.TestCase):
     def test_statement_tuples(self):
-        self.assertEqual(_parse("DEF NEW1 LAM V0 END"), ("def", "NEW1", ("lam", ("var", 0))))
+        self.assertEqual(_parse("DEF<NEW1> LAM V0"), ("def", "NEW1", ("lam", ("var", 0))))
         self.assertEqual(_parse("EVAL INT<1>"), ("eval", ("lit", 1), None))
         self.assertEqual(_parse("EX INT<2> ISNOT NEW0"), ("ex", ("lit", 2), "ISNOT", "NEW0"))
         self.assertEqual(_parse("QUEUE GOAL LAM TRUE"), ("queue", True, ("lam", ("lit", True))))
@@ -33,9 +33,9 @@ class TestForms(unittest.TestCase):
         self.assertEqual(_parse("ADD INT<1> INT<2> INT<3>"), ("implicit", ("op", "ADD", [("lit", 1), ("lit", 2)]), ("lit", 3)))
 
     def test_bad_statements(self):
-        for text in ["BOS DEF NEW0 LAM V0 END PATCH NEW0 END EOS",               # PATCH needs an edit
-                     "BOS DEF NEW0 LAM V0 END PATCH NEW0 WRAP V0 LAM END EOS",    # LAM is not an operator
-                     "BOS DEF NEW0 LAM V0 END PATCH NEW0 AT INT<0> END EOS",      # AT needs an edit after it
+        for text in ["BOS DEF<NEW0> LAM V0 PATCH NEW0 END EOS",               # PATCH needs an edit
+                     "BOS DEF<NEW0> LAM V0 PATCH NEW0 WRAP V0 LAM END EOS",    # LAM is not an operator
+                     "BOS DEF<NEW0> LAM V0 PATCH NEW0 AT INT<0> END EOS",      # AT needs an edit after it
                      "BOS REPLACE INT<1> INT<2> EOS",                             # an edit is not a statement
                      "BOS EX INT<1> SAME NEW0 EOS",
                      "BOS ACT GOAL INT<1> EOS"]:

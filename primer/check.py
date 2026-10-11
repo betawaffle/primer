@@ -1,15 +1,15 @@
 """Checks a whole training sequence: parses its statements and verifies every claim.
 
-A sequence is BOS statement* EOS, optionally followed by PADs. If it contains a
+A sequence is BOS statement* EOS. If it contains a
 HOLE, the filler follows the EOS and ends with END (BOS ... HOLE ... EOS
 filler END): it is put in place of the HOLE and the completed sequence is
-checked. END otherwise only closes a form's body, as in DEF word expr END.
+checked. END otherwise only closes a variable-length body, as in PATCH.
 
 Statements (their grammar is the `form` of each head token in vocab.toml;
 primer/forms.py parses them):
   expr value                 implicit evaluation (value omitted if expr is already a value)
   EVAL expr RESULT value
-  DEF word expr END
+  DEF<word> expr
   EXPAND word RESULT expr
   EX x IS word | EX x ISNOT word
   ASK x word RESULT YES|NO
@@ -21,7 +21,7 @@ primer/forms.py parses them):
   EVAL expr RESULT wrong OOPS      a thought withdrawn: wrong must really be wrong
   COST expr STEPS n                expr takes n interpreter steps
   QUEUE GOAL pred | QUEUE fun      put a side idea on the agenda
-  NEXT  GOAL pred | NEXT DEF word fun END   take up the oldest agenda item
+  NEXT  GOAL pred | NEXT DEF<word> fun       take up the oldest agenda item
 
 QUOTE, TOK, SPAN, PART and KIND are ordinary expressions; the checker only
 tells SPAN where it is, so it can point back at earlier tokens.
@@ -66,6 +66,13 @@ def parse_statements(toks, starts=None, links=None):
 
 
 # ---- comparing functions by testing them --------------------------------
+#
+# TODO(SAME/DIFF): testing on a fixed pool is not a proof. A DIFF whose only
+# telling input is off the pool is rejected (data lost), and a SAME between
+# functions that differ only off the pool passes (false training data).
+# Generators make SAME true by construction for now. Fix: have generators
+# record their evidence (the differing input for DIFF, the meaning-preserving
+# rewrite for SAME) and check that instead of searching the pool.
 
 _POOL1 = ([*range(-3, 13)] + [0.5, 2.5, -1.5] + [[], [1, 2, 3], [3, 1, 2], [0, 0], [5], [2, 2, 1]]
           + [True, False, "a", "b"])
@@ -110,11 +117,9 @@ def compare_functions(f, g, ctx):
 
 
 def fill_hole(toks):
-    """A sequence's tokens (BOS ... EOS, PADs dropped) with any HOLE replaced by
+    """A sequence's tokens (BOS ... EOS) with any HOLE replaced by
     its filler (BOS ... HOLE ... EOS filler END), and for each of them its
     position in toks."""
-    while toks and toks[-1].name == "PAD":
-        toks = toks[:-1]
     eos = [i for i, t in enumerate(toks) if t.name == "EOS"]
     if not toks or toks[0].name != "BOS" or len(eos) != 1:
         raise SyntaxErr("a sequence is BOS ... EOS")
@@ -122,7 +127,7 @@ def fill_hole(toks):
     holes = [i for i, t in enumerate(toks) if t.name == "HOLE"]
     if not holes:
         if e != len(toks) - 1:
-            raise SyntaxErr("nothing may follow EOS but PADs, or a HOLE's filler")
+            raise SyntaxErr("nothing may follow EOS but a HOLE's filler")
         return list(toks), list(range(len(toks)))
     if len(holes) > 1:
         raise SyntaxErr("only one HOLE per sequence")

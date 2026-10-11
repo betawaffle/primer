@@ -8,7 +8,7 @@ Covers eleven vocabulary groups, in bootstrap order (each can be explained using
 
 **Ids are renumbered freely until the first training run**, so they stay in group order while the vocabulary settles. After that they are append-only: never renumber or reuse one; a new token takes the next free id, whatever its group. A test pins a few ids to catch accidents.
 
-**Names.** The `[[name]]` rows describe the three families of names text uses for bound things: variables `V0, V1, …` (bound by `LAM` / `LET`), words `NEW0, NEW1, …` (bound by `DEF` or `EX`) and slots `R0, R1, …` (objects the harness binds). Any number is allowed; none has an id. In the model's form a name becomes a binder token where it is bound (`NEW`, `SLOT`, or the `LAM` / `LET` itself) and a `REF` that points at that binder everywhere else (see Serialization).
+**Names.** The `[[name]]` rows describe the three families of names text uses for bound things: variables `V0, V1, …` (bound by `LAM` / `LET`), words `NEW0, NEW1, …` (bound by `DEF` or `EX`) and slots `R0, R1, …` (objects the harness binds). Any number is allowed; none has an id. In the model's form a name becomes a binder token where it is bound (`NEW`, `SLOT`, or the `LAM` / `LET` / `DEF` itself) and a `REF` that points at that binder everywhere else (see Serialization).
 
 ## Text form
 
@@ -63,7 +63,7 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 ## Terms
 
 - **Position**: a token's index in its sequence, counting `BOS` as 0 (training will add a random start offset). Never renumbered, even after eviction; `SPAN` addresses it.
-- **Form**: the shape of a multi-token construct, such as `DEF word expr END` or `BET p pred list`.
+- **Form**: the shape of a multi-token construct, such as `PATCH word edit… END` or `BET p pred list`.
 - **Statement**: one instance of a form in a sequence: one claim, one definition, or one step such as `ACT EVAL e OBS v`. Statements are made of expressions; a sequence is made of statements.
 - **Episode**: one goal pursued to its outcome: `GOAL`, actions, then `ACT DONE x` answered `YES` or `NO` (or the budget runs out). A sequence can hold several; `NEXT` starts the next.
 - **Sequence**: `BOS … EOS`. One numbering of positions, one scope for defined words, slots and the agenda. A teaching row is a short sequence; a live agent run is one long one.
@@ -71,13 +71,13 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 
 ## Sequences
 
-`BOS statement* EOS`, optionally followed by `PAD`s. `END` never ends a sequence; it only closes a form's body, as in `DEF word expr END`. Each statement starts with a head token whose `form` in `vocab.toml` gives the rest of its shape, so the checker, the printer and (later) constrained decoding read one grammar (`primer/forms.py`); a statement with no head is the implicit `expr value`. Statements:
+`BOS statement* EOS`. `END` never ends a sequence; it only closes a body of variable length, as in `PATCH word edit… END`. Each statement starts with a head token whose `form` in `vocab.toml` gives the rest of its shape, so the checker, the printer and (later) constrained decoding read one grammar (`primer/forms.py`); a statement with no head is the implicit `expr value`. Statements:
 
 | Statement | Claim checked |
 |---|---|
 | `expr value` | expr evaluates to value (types must match). If expr is already a value, nothing follows it. |
 | `EVAL expr RESULT value` | the same, made explicit |
-| `DEF word expr END` | defines a word (`NEW0`, `NEW1`, …) for the rest of the sequence |
+| `DEF<word> expr` | defines a word (`NEW0`, `NEW1`, …) for the rest of the sequence. `DEF` itself binds it, so the word rides along as `DEF`'s payload in text and the model sees no `NEW` |
 | `EXPAND word RESULT expr` | expr is the word's definition, or behaves identically |
 | `EX x IS word` / `EX x ISNOT word` | an example; defines the word if it has no definition |
 | `ASK x word RESULT YES\|NO` | classification of a new example |
@@ -129,7 +129,7 @@ The agenda is a first-in, first-out list of side ideas: goals that aren't steps 
 
 - **Text** as above; parse → print → parse is stable.
 - **Ids** (`primer/serialize.py`), the form the model reads and writes: token ids, a side table of `(position, payload)`, a side table of `(position, binder position)` for every `REF`, and the encoder version. Vectors are recomputed, never stored.
-  - Names never reach the model. `V`*i* becomes a `REF` to its `LAM` or `LET`; a word's first appearance becomes `NEW` and later ones a `REF` to it; `R`*k*`<…>` becomes `SLOT` with the payload, and a bare `R`*k* a `REF` to the latest `SLOT` of that name. A `REF` always points back. A variable that is free where it stands (only possible inside a quote of part of a body) has nothing to point at and keeps its index as the `REF`'s payload.
+  - Names never reach the model. `V`*i* becomes a `REF` to its `LAM` or `LET`; a word's first appearance becomes `NEW` (or, in `DEF<NEW3>`, the `DEF` itself, which drops the name) and later ones a `REF` to it; `R`*k*`<…>` becomes `SLOT` with the payload, and a bare `R`*k* a `REF` to the latest `SLOT` of that name. A `REF` always points back. A variable that is free where it stands (only possible inside a quote of part of a body) has nothing to point at and keeps its index as the `REF`'s payload.
   - So the numbers in names carry nothing: sequences that differ only in names have the same ids, and `from_ids` prints canonical names (words and slots numbered in order of appearance).
   - Decoding a `REF` is a pointer, not a choice from the vocabulary: the model picks its binder among earlier positions, which keeps references unbounded and makes renaming free.
 - **Canonical bytes:** payloads normalized (`NUM<2.0>` = `NUM<2>`) and names made canonical, so equal sequences hash equal. Deduplication hashes the id form.

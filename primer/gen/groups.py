@@ -70,8 +70,7 @@ def gen_syntax(r):
         filler = toks[i]
         toks = toks[:i] + ["HOLE"] + toks[i + 1:]
         return f"BOS {' '.join(toks)} EOS {filler} END", None
-    pad = " PAD" * (r.randint(1, 4) if r.random() < 0.2 else 0)
-    return _seq(" ".join(toks)) + pad, None
+    return _seq(" ".join(toks)), None
 
 
 # ---- logic -----------------------------------------------------------
@@ -267,7 +266,7 @@ def _teach_define(r, words):
     for name in names[: r.randint(1, 2)]:
         body = ("lam", _unary(r, words=defined))
         ctx.words[name] = _eval_fun(body, ctx, name)
-        parts.append(f"DEF {name} {unparse(body)} END")
+        parts.append(f"DEF<{name}> {unparse(body)}")
         for x in _working_inputs(r, ("word", name), ctx, r.randint(1, 2)):
             call = op("APP", ("word", name), lit(x))
             parts.append(f"EVAL {unparse(call)} RESULT {show(_eval(call, ctx))}")
@@ -277,6 +276,8 @@ def _teach_define(r, words):
         if r.random() < 0.5:
             parts.append(f"EXPAND {name} RESULT {unparse(body)}")
         defined.append(name)
+    if r.random() < 0.1:    # the first DEF hidden by a HOLE: its word is bound at its first use, the DEF points back
+        return " ".join(["BOS", "HOLE", *parts[1:], "EOS", parts[0], "END"]), None
     return _seq(*parts), None
 
 
@@ -313,7 +314,7 @@ def _teach_examples(r, words):
     parts += [f"ASK {unparse(x)} {name} RESULT {'YES' if v else 'NO'}" for x, v in asked]
     if r.random() < 0.3:
         other = r.choice([f"NEW{i}" for i in range(16) if f"NEW{i}" != name])
-        parts += [f"DEF {other} {src} END", f"SAME {name} {other}"]
+        parts += [f"DEF<{other}> {src}", f"SAME {name} {other}"]
     return _seq(*parts), {name: src}
 
 
@@ -348,14 +349,14 @@ def _teach_relation(r, words):
     if diff is None and n < 5:
         raise Retry
     rel = "SAME" if diff is None else "DIFF"
-    return _seq(f"DEF {a} LAM {unparse(body)} END", f"DEF {b} LAM {unparse(other)} END", f"{rel} {a} {b}"), None
+    return _seq(f"DEF<{a}> LAM {unparse(body)}", f"DEF<{b}> LAM {unparse(other)}", f"{rel} {a} {b}"), None
 
 
 def _teach_ask_defined(r, words):
     src, domain = _predicate(r)
     name = f"NEW{r.randrange(16)}"
     pred = parse_expr(src)
-    parts = [f"DEF {name} {src} END"]
+    parts = [f"DEF<{name}> {src}"]
     for _ in range(r.randint(2, 4)):
         x = domain()
         v = evaluate(op("APP", pred, x))
@@ -479,7 +480,7 @@ def gen_belief(r, bet_on_word=None):
     name = None
     if bet_on_word if bet_on_word is not None else r.random() < 0.3:   # name the predicate, bet on the word
         name = f"NEW{r.randrange(16)}"
-        parts.append(f"DEF {name} {unparse(pred)} END")
+        parts.append(f"DEF<{name}> {unparse(pred)}")
         ctx.words[name] = _eval_fun(pred, ctx, name)
     xs = _draw_list(r)
     rounds = r.randint(1, 3)
@@ -568,7 +569,7 @@ def gen_edit(r):
         ctx.words[w] = _eval_fun(good, ctx, w)
         e = _make_edit(good, path, dict(subtrees(bad))[path])
         ctx.words[w] = _eval_fun(bad, ctx, w)
-        parts = [f"DEF {w} {unparse(good)} END", f"PATCH {w} {_edit_text(e)} END"]
+        parts = [f"DEF<{w}> {unparse(good)}", f"PATCH {w} {_edit_text(e)} END"]
         for x in _working_inputs(r, ("word", w), ctx, r.randint(0, 2)) if r.random() < 0.5 else []:
             call = op("APP", ("word", w), lit(x))
             parts.append(f"EVAL {unparse(call)} RESULT {show(_eval(call, ctx))}")
@@ -585,7 +586,7 @@ def gen_edit(r):
     if got is ERR or not size_ok(got) or got == want:
         raise Retry
     check = f"EQ MAP {w} {unparse(tests)} {show(want)}"
-    parts = [f"DEF {w} {unparse(bad)} END"]
+    parts = [f"DEF<{w}> {unparse(bad)}"]
     if r.random() < 0.5:
         parts.append(f"MAP {w} {unparse(tests)} {show(got)}")
     parts.append(f"{check} FALSE")
@@ -766,7 +767,7 @@ def _queue_word(r):
     if r.random() < 0.6:
         name = f"NEW{r.randrange(16)}"
         ctx.words[name] = _eval_fun(fun, ctx, name)
-        parts += ["NEXT", f"DEF {name} {unparse(fun)} END"]
+        parts += ["NEXT", f"DEF<{name}> {unparse(fun)}"]
         call = op("APP", ("word", name), lit(r.randint(-3, 12)))
         parts.append(f"EVAL {unparse(call)} RESULT {show(_eval(call, ctx))}")
     return _seq(*parts), None
@@ -780,7 +781,7 @@ def gen_agenda(r):
 
 # ---- quote --------------------------------------------------------------------
 
-_NEVER_QUOTED = {"BOS", "EOS", "PAD", "HOLE"}   # would confuse sequence splitting or hole filling
+_NEVER_QUOTED = {"BOS", "EOS", "HOLE"}   # would confuse sequence splitting or hole filling
 
 
 def _quote_vs_use(r):
@@ -810,7 +811,7 @@ def _kinds(r):
         if r.random() < 0.5:
             body = ("lam", _unary(r))
             ctx.words[word] = _eval_fun(body, ctx, word)
-            parts.append(f"DEF {word} {unparse(body)} END")
+            parts.append(f"DEF<{word}> {unparse(body)}")
         else:
             src, domain = _predicate(r)
             pred = evaluate(parse_expr(src), ctx)

@@ -3,7 +3,7 @@ import unittest
 
 import numpy as np
 
-from primer.batches import PAD, Design, make_row, pack, stack
+from primer.batches import FILL, Design, make_row, pack, stack
 from primer.check import retracted_spans
 from primer.serialize import to_ids
 from primer.vocab import VOCAB
@@ -16,7 +16,7 @@ except ImportError:
 
 TEXTS = [
     "BOS ADD INT<2> INT<3> INT<5> EOS",
-    "BOS DEF NEW0 LAM ADD V0 INT<1> END EVAL APP NEW0 INT<4> RESULT INT<5> EOS",
+    "BOS DEF<NEW0> LAM ADD V0 INT<1> EVAL APP NEW0 INT<4> RESULT INT<5> EOS",
     "BOS APP LAM LET MUL V0 V0 ADD V0 V1 INT<3> INT<12> EOS",
 ]
 DESIGN = Design(16)
@@ -42,11 +42,11 @@ class TestBatches(unittest.TestCase):
         r = row(rs)
         n = sum(len(x["ids"]) for x in rs)
         self.assertEqual(list(r["ids"][:len(rs[0]["ids"])]), rs[0]["ids"])
-        self.assertTrue((r["ids"][n:] == PAD).all() and (r["seq"][n:] == -1).all() and not r["loss"][n:].any())
+        self.assertTrue((r["ids"][n:] == FILL).all() and (r["seq"][n:] == -1).all() and not r["loss"][n:].any())
         # refs move with their sequence's place in the row and point at binders
         for i in np.nonzero(r["ref"] >= 0)[0]:
             self.assertEqual(r["ids"][i], VOCAB["REF"].id)
-            self.assertIn(VOCAB.by_id[r["ids"][r["ref"][i]]].name, ("LAM", "LET", "NEW", "SLOT"))
+            self.assertIn(VOCAB.by_id[r["ids"][r["ref"][i]]].name, ("LAM", "LET", "NEW", "DEF", "SLOT"))
             self.assertEqual(r["seq"][i], r["seq"][r["ref"][i]])
         # positions count up by one inside a sequence, from a random start
         for s in range(len(rs)):
@@ -58,7 +58,15 @@ class TestBatches(unittest.TestCase):
         ints = r["design"][r["ids"] == VOCAB["INT"].id]
         self.assertTrue(np.allclose(np.sqrt((ints ** 2).mean(-1)), 1, atol=1e-4))
         self.assertTrue(np.allclose(DESIGN.vector(VOCAB["INT"].id, "5"), DESIGN.vector(VOCAB["INT"].id, "5")))
-        self.assertFalse((r["design"][r["ids"] == VOCAB["REF"].id] != 0).any())
+        self.assertFalse((r["design"][r["ids"] == VOCAB["REF"].id] != 0).any())   # bound REFs: the edge says it all
+
+    def test_free_variables_carry_their_index(self):
+        r = row([to_ids("BOS EVAL QUOTE MUL V0 V1 RESULT QUOTE MUL V0 V1 EOS")])
+        d = r["design"]
+        self.assertTrue((d[4] != 0).any() and (d[5] != 0).any())
+        self.assertFalse(np.allclose(d[4], d[5]))                         # V0 and V1 differ
+        self.assertTrue(np.allclose(d[4], d[9]) and np.allclose(d[5], d[10]))
+        self.assertFalse(np.allclose(d[4], DESIGN.vector(VOCAB["INT"].id, "0")))   # V0 is not INT<0>
 
     def test_pack(self):
         rows = list(pack(recs() * 10, 64))
@@ -134,6 +142,15 @@ class TestModel(unittest.TestCase):
         self.assertLessEqual(sc["exact"][0], sc["token"][0])
         self.assertEqual(sc["answer"][1], 1)            # one RESULT in TEXTS, answered INT<5>
         self.assertGreater(sc["value"][1], 0)
+
+    def test_redef_is_a_pointer_target(self):
+        """A DEF whose word is already bound (here its DEF is hidden by a HOLE) is
+        scored and trained like a REF: the pointer head must find the word."""
+        rec = to_ids("BOS HOLE EVAL APP NEW2 INT<7> RESULT INT<49> EOS DEF<NEW2> LAM MUL V0 V0 END")
+        self.assertIn((9, 4), rec["refs"])
+        b = to_torch(stack([row([rec])]), "cpu")
+        self.assertEqual(self.m.score(b)["pointer"][1], 3)                 # the DEF and two V0s
+        self.assertGreater(float(self.m.loss(b)["pointer"]), 0)
 
     def test_grammar_leak(self):
         from primer.grammar import allowed_mask

@@ -27,8 +27,9 @@ capture their AST, name or sub-statement; A|B captures the token's name;
 operator captures (name, [args]); NAME captures nothing. X? captures X's
 value or None (a group that captures nothing gives True or False instead);
 X* and X+ capture a list. A group capturing several values gives a tuple.
+A head that `binds` (DEF) carries its word as a payload, captured first.
 
-  DEF word expr END             DEF NEW1 LAM V0 END  ->  ("def", "NEW1", ("lam", ("var", 0)))
+  DEF expr                      DEF<NEW1> LAM V0     ->  ("def", "NEW1", ("lam", ("var", 0)))
   BET expr (expr expr)?         BET NUM<0.5> ACT ... ->  ("bet", ("lit", 0.5), None)
 
 A statement with no head token is the implicit evaluation `expr value`
@@ -209,6 +210,13 @@ def _word(p):
     return t.name
 
 
+def _bound_word(t):
+    """The word a binding head (DEF<NEW3>) is about."""
+    if t.payload is None or t.payload not in VOCAB or VOCAB[t.payload].family != "NEW":
+        raise SyntaxErr(f"{t.name} names the word it binds: {t.name}<NEW3>, got {t}")
+    return t.payload
+
+
 def _operator(p):
     t = p.next()
     if t.name not in _OPERATOR:
@@ -260,8 +268,15 @@ def _parse(e, p):
 
 def parse_form(p):
     """The statement (or edit, or other part) headed by the next token."""
-    head = p.next().name
-    caps = [_parse(x, p) for x in FORMS[head].body[1]]
+    t = p.next()
+    head = t.name
+    if VOCAB[head].binds:
+        caps = [_bound_word(t)]
+    elif t.payload is not None:
+        raise SyntaxErr(f"{head} takes no payload")
+    else:
+        caps = []
+    caps += [_parse(x, p) for x in FORMS[head].body[1]]
     return (head.lower(), *[v for v in caps if v is not _NOCAP])
 
 
@@ -309,7 +324,8 @@ def unparse_statement(stmt):
     if tag == "implicit":
         return unparse(stmt[1]) if stmt[2] is None else f"{unparse(stmt[1])} {unparse(stmt[2])}"
     f = FORMS[tag.upper()]
-    out, vals = [f.head], iter(stmt[1:])
+    vals = iter(stmt[1:])
+    out = [f"{f.head}<{next(vals)}>" if VOCAB[f.head].binds else f.head]
     for x in f.body[1]:
         _show(x, next(vals) if _captures(x) else None, out)
     return " ".join(out)

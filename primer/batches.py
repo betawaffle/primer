@@ -3,11 +3,11 @@
 Each batch row is one context of T positions packed with whole sequences
 (never split), padded at the end. Per position:
 
-  ids       token id from vocab.toml (PAD after the last sequence)
+  ids       token id from vocab.toml (FILL after the last sequence)
   design    the fixed half of the input embedding: the token's VSA vector
             (an atom, or the payload's computed vector), projected to
             d_design dims by a fixed random matrix (see Design)
-  seq       which sequence of the row the position belongs to (-1 for PAD);
+  seq       which sequence of the row the position belongs to (-1 for fill);
             attention never crosses sequences
   pos       stable position: the sequence's start offset (random per
             sequence, as context.md decided) plus the index. RoPE uses
@@ -15,10 +15,12 @@ Each batch row is one context of T positions packed with whole sequences
             no head can learn absolute positions
   time      event time in seconds, and time_known; shards have no times
             column yet, so time is unknown everywhere for now
-  ref       for a REF, the row index of its binder (LAM, LET, NEW or SLOT);
-            -1 elsewhere, and for a free variable inside a quote
+  ref       for a REF, the row index of its binder (LAM, LET, NEW, DEF or SLOT);
+            for a DEF of a word already bound, that word's binder; -1
+            elsewhere, and for a free variable inside a quote (whose design
+            is its de Bruijn index instead)
   loss      False where training puts no loss on the token (OOPS-retracted
-            values, and PAD)
+            values, and fill)
   allowed   only if every record has one (see primer/grammar.py): which
             tokens the grammar allows at each position, for evaluation
 
@@ -35,11 +37,12 @@ from .values import parse_payload
 from .vocab import VOCAB
 from . import vsa
 
-BINDERS = {VOCAB[n].id for n in ("LAM", "LET", "NEW", "SLOT")}
-PAD = VOCAB["PAD"].id
+BINDERS = {VOCAB[n].id for n in ("LAM", "LET", "NEW", "DEF", "SLOT")}
+FILL = VOCAB["EOS"].id   # stands in after a row's last sequence: seq -1, so never read, never scored
 REF = VOCAB["REF"].id
 RESULT = VOCAB["RESULT"].id
 COMPUTED = {t.id for t in VOCAB.tokens if t.vsa == "computed"}
+VALUED = COMPUTED | {REF}   # tokens whose payload sets the designed half (a REF's only when free)
 N_VOCAB = max(VOCAB.by_id) + 1
 
 
@@ -67,7 +70,8 @@ class Design:
     def token(self, i):
         """Designed half of token i's own row (input for a bare token, output
         for scoring it). Computed tokens and REF get zeros here: their
-        designed half is per position, from the payload."""
+        designed half is per position, from the payload (a bound REF has none
+        and stays zero; the attention edge to its binder carries its meaning)."""
         t = VOCAB.by_id.get(i)
         if t is None or t.vsa != "atom":
             return np.zeros(self.d, np.float32)
@@ -78,7 +82,9 @@ class Design:
         if name == "SLOT":
             kind, _, payload = payload.strip().partition(" ")
             name = kind
-        if name == "REF" or name not in ("NUM", "INT", "STR", "TIME", "REC"):
+        if name == "REF":     # a free variable inside a quote: its de Bruijn index, as a variable
+            return self.project(vsa.bind(vsa.atom("FREE"), vsa.enc_int(int(payload))))
+        if name not in ("NUM", "INT", "STR", "TIME", "REC"):
             return np.zeros(self.d, np.float32)
         return self.project(vsa.encode(parse_payload(name, payload)))
 
@@ -133,7 +139,7 @@ def pack(recs, T):
 
 def make_row(recs, T, design, rng, max_offset=1 << 20, time_dropout=0.2):
     row = {
-        "ids": np.full(T, PAD, np.int64),
+        "ids": np.full(T, FILL, np.int64),
         "design": np.zeros((T, design.d), np.float32),
         "seq": np.full(T, -1, np.int64),
         "pos": np.zeros(T, np.int64),
