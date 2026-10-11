@@ -10,6 +10,7 @@ Decisions Andy has agreed to in the project's design threads that the code doesn
 
 ## Vocabulary and embeddings
 
+- Names are pointers (2026-10-10). Variables, words and slots are written `V0`, `NEW3`, `R12` in text, but the model sees a binder token where each is bound and a `REF` pointing back at it elsewhere, decoded by a pointer head over earlier positions. No numbered tokens and no fixed limits. The three kinds of binder stay distinct: lexical (`LAM` / `LET`), defined (`DEF` / `EX`, can be patched) and external (harness slots).
 - Tokens are handles: small closed sets the model must choose among (ops, fields, enums, defined words). Open-ended values (numbers, ids, text) are computed tokens (`NUM`, `INT`, `STR`, `TIME`, `REC`) or slots (`R0…`), never per-value rows.
 - Each embedding is a designed part (the token's VSA vector from `vocab.toml`'s `vsa` kind) plus a learned part. Relationships are constrained, positions are free; "sleep" re-layout is accepted only if behavioural checks still pass.
 - New words are born by library learning: a recurring sub-program that shortens the corpus under MDL gets a `NEW` slot, then a permanent token. A defined token's embedding starts as the VSA composition of its definition.

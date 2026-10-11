@@ -6,7 +6,7 @@ Companion to [SPEC.md](../SPEC.md). Hand-written samples showing what the genera
 
 - Each sample is one training sequence, `BOS … EOS`. `END` only closes a form's body, as in `DEF word expr END`.
 - `NUM⟨3⟩`, `INT⟨7⟩`, `STR⟨fast⟩`, `TIME⟨2026-10-09 15:30⟩` and `REC⟨{a:1, b:2}⟩` are **one token each**. The part in ⟨⟩ is the content its vector is computed from, not extra tokens.
-- `R0⟨…⟩` is a slot token whose content the harness filled in.
+- `R0⟨…⟩` is a slot whose content the harness filled in. Names like `R0`, `V0` and `NEW0` are for reading; the model sees a pointer back to where each was bound, never the number.
 - Every token has a fixed arity, so a parser always knows where an expression ends.
 - **The first groups use the rule "an expression is followed by its value".** Because arity makes the end of the expression unambiguous, `AND TRUE FALSE FALSE` reads as "AND TRUE FALSE evaluates to FALSE". The teach group later names this pattern with `EVAL … RESULT`, Lincos style: show the pattern first, name it afterwards.
 - `HOLE` format: a sequence containing `HOLE`, then `EOS`, then the missing piece, then `END`.
@@ -59,7 +59,7 @@ BOS [ TRUE FALSE ] EOS
 
 ## values
 
-`NUM INT TIME STR REC NONE LT GT LE GE`, slots `R0…`. Variables `V0…` and fresh words `NEW0…` need binders, so they first appear with `LAM` (compute) and `DEF` (teach).
+`NUM INT TIME STR REC NONE LT GT LE GE`, slots `R0, R1, …`. Variables `V0…` and fresh words `NEW0…` need binders, so they first appear with `LAM` (compute) and `DEF` (teach).
 
 Values are introduced through comparisons, which logic already gave us. The model learns what the computed vectors mean by seeing how they compare.
 
@@ -87,7 +87,7 @@ Lines 11–13 teach that a record is unordered (key order doesn't matter) while 
 
 ## compute
 
-`LAM APP LET PART ADD SUB MUL DIV MOD NEG LOG EXP MIN MAX ABS LEN GET CONS CONCAT MAP FILTER FOLD SORT TOPK ARGMIN ARGMAX RANGE FIELD WITH KEYS BIND UNBIND BUNDLE SIM CLEAN`, variables `V0…V7`
+`LAM APP LET PART ADD SUB MUL DIV MOD NEG LOG EXP MIN MAX ABS LEN GET CONS CONCAT MAP FILTER FOLD SORT TOPK ARGMIN ARGMAX RANGE FIELD WITH KEYS BIND UNBIND BUNDLE SIM CLEAN`, variables `V0, V1, …`
 
 Arithmetic:
 ```
@@ -162,7 +162,7 @@ BOS SAME PART SUB INT⟨10⟩ LAM SUB INT⟨10⟩ V0
 
 ## teach
 
-`EVAL RESULT DEF EXPAND EX IS ISNOT ASK YES NO SAME DIFF`, fresh words `NEW0…NEW15`
+`EVAL RESULT DEF EXPAND EX IS ISNOT ASK YES NO SAME DIFF`, fresh words `NEW0, NEW1, …`
 
 Naming the pattern the model already knows:
 ```
@@ -171,7 +171,7 @@ BOS EVAL MAP LAM ADD V0 INT⟨1⟩ RANGE INT⟨3⟩ RESULT [ INT⟨1⟩ INT⟨2�
 BOS EVAL ADD NUM⟨2⟩ HOLE RESULT NUM⟨5⟩ EOS NUM⟨3⟩ END
 ```
 
-Defining a word, using it, and the round-trip check. These are all **in one context**: `NEW0` means "square" only in this sequence. In another sequence `NEW0` means something else, which forces the model to learn *how to learn a word from its definition* rather than memorize one:
+Defining a word, using it, and the round-trip check. These are all **in one context**: `NEW0` means "square" only in this sequence. The model never sees the number, only a pointer back to the `DEF`, so it has to learn *how to learn a word from its definition* rather than memorize one:
 ```
 BOS DEF NEW0 LAM MUL V0 V0 END
     EVAL APP NEW0 INT⟨7⟩ RESULT INT⟨49⟩

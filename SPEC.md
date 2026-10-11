@@ -6,7 +6,9 @@ Covers eleven vocabulary groups, in bootstrap order (each can be explained using
 
 `primer/vocab.toml` lists the groups in bootstrap order, then every token: id, group, argument types (their count is the arity), result type, and the kind of fixed vector it gets (`atom`, `ordered`, `computed`, `zero`). The parser, interpreter, generators and constrained decoding all read this file.
 
-**Ids are append-only.** Never renumber or reuse one; a new token takes the next free id, whatever its group. A test pins a few ids to catch accidents. Ids were renumbered once, for v1 (2026-10-10, before any model or kept dataset existed), so they start out in group order.
+**Ids are renumbered freely until the first training run**, so they stay in group order while the vocabulary settles. After that they are append-only: never renumber or reuse one; a new token takes the next free id, whatever its group. A test pins a few ids to catch accidents.
+
+**Names.** The `[[name]]` rows describe the three families of names text uses for bound things: variables `V0, V1, …` (bound by `LAM` / `LET`), words `NEW0, NEW1, …` (bound by `DEF` or `EX`) and slots `R0, R1, …` (objects the harness binds). Any number is allowed; none has an id. In the model's form a name becomes a binder token where it is bound (`NEW`, `SLOT`, or the `LAM` / `LET` itself) and a `REF` that points at that binder everywhere else (see Serialization).
 
 ## Text form
 
@@ -19,7 +21,7 @@ Space-separated tokens. A token with a payload is `NAME<payload>` or `NAME⟨pay
 | `STR` | raw text | `STR<fast>` |
 | `TIME` | ISO date-time | `TIME<2026-10-09 15:30>` |
 | `REC` | JSON-like record; numbers inside are NUM, words are STR | `REC<{a:1, b:x, c:[1,2]}>` |
-| `R0`…`R63` | optional: kind and value bound to the slot | `R0<NUM 5>` |
+| `R0`, `R1`, … | optional: kind and value bound to the slot | `R0<NUM 5>` |
 
 Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ … ]` and records `{ key value … }` are variable-length.
 
@@ -75,7 +77,7 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 |---|---|
 | `expr value` | expr evaluates to value (types must match). If expr is already a value, nothing follows it. |
 | `EVAL expr RESULT value` | the same, made explicit |
-| `DEF word expr END` | defines `NEW0`…`NEW15` for the rest of the sequence |
+| `DEF word expr END` | defines a word (`NEW0`, `NEW1`, …) for the rest of the sequence |
 | `EXPAND word RESULT expr` | expr is the word's definition, or behaves identically |
 | `EX x IS word` / `EX x ISNOT word` | an example; defines the word if it has no definition |
 | `ASK x word RESULT YES\|NO` | classification of a new example |
@@ -126,8 +128,11 @@ The agenda is a first-in, first-out list of side ideas: goals that aren't steps 
 ## Serialization
 
 - **Text** as above; parse → print → parse is stable.
-- **Ids** (`primer/serialize.py`): token ids plus a side table of `(position, payload)`, and the encoder version. Vectors are recomputed, never stored.
-- **Canonical bytes:** payloads normalized (`NUM<2.0>` = `NUM<2>`) so equal sequences hash equal.
+- **Ids** (`primer/serialize.py`), the form the model reads and writes: token ids, a side table of `(position, payload)`, a side table of `(position, binder position)` for every `REF`, and the encoder version. Vectors are recomputed, never stored.
+  - Names never reach the model. `V`*i* becomes a `REF` to its `LAM` or `LET`; a word's first appearance becomes `NEW` and later ones a `REF` to it; `R`*k*`<…>` becomes `SLOT` with the payload, and a bare `R`*k* a `REF` to the latest `SLOT` of that name. A `REF` always points back. A variable that is free where it stands (only possible inside a quote of part of a body) has nothing to point at and keeps its index as the `REF`'s payload.
+  - So the numbers in names carry nothing: sequences that differ only in names have the same ids, and `from_ids` prints canonical names (words and slots numbered in order of appearance).
+  - Decoding a `REF` is a pointer, not a choice from the vocabulary: the model picks its binder among earlier positions, which keeps references unbounded and makes renaming free.
+- **Canonical bytes:** payloads normalized (`NUM<2.0>` = `NUM<2>`) and names made canonical, so equal sequences hash equal. Deduplication hashes the id form.
 
 ## Generators
 
@@ -147,7 +152,7 @@ The agenda is a first-in, first-out list of side ideas: goals that aren't steps 
 | belief | exact `CHANCE` items; rounds of `BET`/`DRAW`/outcome/`SURPRISE` on a predicate (sometimes a defined word) and lists; holes for the probability. Certain chances (0 and 1) are kept rare |
 | agenda | solved episodes that queue a nearby goal (one constant changed), mid-task or after, sometimes taking it up with `NEXT`; a chunk used repeatedly while working, queued as a candidate word and sometimes defined |
 
-Every answer is computed by the interpreter, so a generator can choose a bad question but never a wrong answer, and every sequence is run through the checker again before it is written. No sequence appears twice in a run, across all shards; the run tops itself up to the requested count. Random programs keep to what a person would write: every `LET` and every function body uses the variable it binds and isn't just that variable, and `IF` never tests a constant. Words are assigned random `NEW` numbers per sequence so no number gets a fixed meaning.
+Every answer is computed by the interpreter, so a generator can choose a bad question but never a wrong answer, and every sequence is run through the checker again before it is written. No sequence appears twice in a run, across all shards, counting sequences that differ only in names as the same; the run tops itself up to the requested count. Random programs keep to what a person would write: every `LET` and every function body uses the variable it binds and isn't just that variable, and `IF` never tests a constant. Words get random `NEW` numbers in the text; the model never sees them.
 
 ## Held-out split
 

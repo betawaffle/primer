@@ -59,10 +59,13 @@ def _word(p):
 METRICS = ("STEPS",)   # what COST can measure; FLOPS, WALL, ... come with the Lab
 
 
-def parse_items(toks, starts=None):
+def parse_items(toks, starts=None, links=None):
     """Items of a sequence body. If starts is a list, each item's first token
-    position is appended to it."""
+    position is appended to it; if links is a dict, it gets each variable's
+    binder position (see Parser)."""
     p, items = Parser(toks), []
+    if links is not None:
+        p.links = links
     while p.peek() is not None:
         if starts is not None:
             starts.append(p.pos)
@@ -224,37 +227,48 @@ def compare_functions(f, g, ctx):
     return agree, None
 
 
-def sequence_items(text, info=None):
-    """Parse a whole sequence into items, with any HOLE already filled in.
-    If info is a dict, it gets the sequence's tokens ("tokens", after filling)
-    and each item's first token position ("starts", counting BOS as 0)."""
-    toks = tokenize(text)
+def fill_hole(toks):
+    """A sequence's tokens (BOS ... EOS, PADs dropped) with any HOLE replaced by
+    its filler (BOS ... HOLE ... EOS filler END), and for each of them its
+    position in toks."""
     while toks and toks[-1].name == "PAD":
-        toks.pop()
+        toks = toks[:-1]
     eos = [i for i, t in enumerate(toks) if t.name == "EOS"]
     if not toks or toks[0].name != "BOS" or len(eos) != 1:
         raise SyntaxErr("a sequence is BOS ... EOS")
-    holes = [i for i, t in enumerate(toks) if t.name == "HOLE"]
     e = eos[0]
-    if holes:
-        if len(holes) > 1:
-            raise SyntaxErr("only one HOLE per sequence")
-        if holes[0] > e:
-            raise SyntaxErr("the HOLE must come before EOS")
-        if toks[-1].name != "END":
-            raise SyntaxErr("a HOLE needs a filler: ... EOS filler END")
-        filler, main = toks[e + 1:-1], toks[:e + 1]
-        if not filler:
-            raise SyntaxErr("empty filler")
-        h = holes[0]
-        toks = main[:h] + filler + main[h + 1:]
-    elif e != len(toks) - 1:
-        raise SyntaxErr("nothing may follow EOS but PADs, or a HOLE's filler")
-    starts = []
-    items = parse_items(toks[1:-1], starts)
+    holes = [i for i, t in enumerate(toks) if t.name == "HOLE"]
+    if not holes:
+        if e != len(toks) - 1:
+            raise SyntaxErr("nothing may follow EOS but PADs, or a HOLE's filler")
+        return list(toks), list(range(len(toks)))
+    if len(holes) > 1:
+        raise SyntaxErr("only one HOLE per sequence")
+    h = holes[0]
+    if h > e:
+        raise SyntaxErr("the HOLE must come before EOS")
+    if toks[-1].name != "END" or e == len(toks) - 1:
+        raise SyntaxErr("a HOLE needs a filler: ... EOS filler END")
+    if e + 1 == len(toks) - 1:
+        raise SyntaxErr("empty filler")
+    where = [*range(h), *range(e + 1, len(toks) - 1), *range(h + 1, e + 1)]
+    return [toks[i] for i in where], where
+
+
+def sequence_items(text, info=None):
+    """Parse a whole sequence into items, with any HOLE already filled in.
+    If info is a dict, it gets the sequence's tokens ("tokens", after filling),
+    each item's first token position ("starts", counting BOS as 0), each
+    variable's binder ("links", positions after filling) and where each
+    filled token was in the text ("where")."""
+    toks, where = fill_hole(tokenize(text) if isinstance(text, str) else text)
+    starts, links = [], {}
+    items = parse_items(toks[1:-1], starts, links)
     if info is not None:
         info["tokens"] = [str(t) for t in toks]
         info["starts"] = [i + 1 for i in starts]
+        info["links"] = {q + 1: None if b is None else b + 1 for q, b in links.items()}
+        info["where"] = where
     return items
 
 
@@ -278,7 +292,7 @@ def retracted_spans(text):
     names = [t.name for t in tokenize(text)]
     spans = []
     for j, n in enumerate(names):
-        if n == "OOPS":
+        if n == "OOPS" and names[j - 1] != "TOK":   # TOK OOPS only mentions the token
             r = max(i for i in range(j) if names[i] == "RESULT")
             spans.append([r + 1, j])
     return spans
