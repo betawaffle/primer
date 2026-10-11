@@ -149,8 +149,8 @@ class Recognizer:
                 self.mode, self.stack = "filler", self.hole
             else:
                 self.after.append(i)
-        elif self.mode == "filler" and i == END:
-            self.mode = "done"
+        elif self.mode == "filler" and i == END and END not in self._first(self.stack):
+            self.mode = "done"     # an END the filler itself owes (TOK END, PATCH's END) is read as part of it
         elif i == HOLE:
             self.hole, self.mode = self._copy(), "after_hole"
         else:

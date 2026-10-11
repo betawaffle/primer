@@ -53,6 +53,16 @@ class TestRecognizer(unittest.TestCase):
                 names.append(n)
                 rec.feed(VOCAB[n].id)
 
+    def test_end_inside_filler(self):
+        """An END the filler owes (a quoted END, PATCH's END) is part of the
+        filler; only the last END closes it."""
+        for text in ("BOS HOLE EOS TOK END END",
+                     "BOS TOK HOLE EOS END END",
+                     "BOS DEF<NEW0> INT<1> HOLE EOS PATCH NEW0 REPLACE INT<1> INT<2> END END",
+                     "BOS DEF<NEW0> INT<1> PATCH NEW0 REPLACE INT<1> HOLE EOS INT<2> END END"):
+            with self.subTest(text=text):
+                np.testing.assert_array_equal(allowed_mask(to_ids(text)["ids"]), grammar.allowed_mask(text))
+
     def test_feed_rejects(self):
         rec = Recognizer()
         for n in ("BOS", "ADD", "INT"):
