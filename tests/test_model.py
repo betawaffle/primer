@@ -37,6 +37,23 @@ def row(rs, T=64, seed=0):
 
 
 class TestBatches(unittest.TestCase):
+    def test_time_dropout(self):
+        """Times are dropped for a whole sequence or a whole event (the tokens
+        sharing a time), never for part of an event."""
+        r = to_ids("BOS ACT EVAL INT<1> OBS INT<1> ACT EVAL INT<2> OBS INT<2> EOS")
+        r["times"] = [0.0] * 4 + [3.0] * 5 + [7.0] * 3
+        seen = set()
+        for seed in range(300):
+            b = make_row([r], 16, DESIGN, np.random.default_rng(seed), event_dropout=0.3)
+            known = b["time_known"][:12]
+            for t in (0.0, 3.0, 7.0):
+                part = known[np.array(r["times"]) == t]
+                self.assertTrue(part.all() or not part.any())
+            seen.add(tuple(known))
+            self.assertFalse(b["time_known"][12:].any())
+        self.assertIn((False,) * 12, seen)                 # the whole sequence dropped
+        self.assertGreater(len(seen), 4)                   # and single events
+
     def test_row(self):
         rs = recs()
         r = row(rs)

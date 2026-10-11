@@ -15,7 +15,8 @@ Each batch row is one context of T positions packed with whole sequences
             no head can learn absolute positions
   time      event time in seconds, and time_known: from the record's
             "times" (sequences with actions, see primer/clock.py), dropped
-            for a whole sequence 20% of the time; unknown elsewhere
+            for a whole sequence 20% of the time and for one event (the
+            tokens sharing a time) 5% of the time; unknown elsewhere
   ref       for a REF, the row index of its binder (LAM, LET, NEW, DEF or SLOT);
             for a DEF of a word already bound, that word's binder; -1
             elsewhere, and for a free variable inside a quote (whose design
@@ -138,7 +139,7 @@ def pack(recs, T):
         print(f"pack: dropped {dropped} sequences longer than {T}")
 
 
-def make_row(recs, T, design, rng, max_offset=1 << 20, time_dropout=0.2):
+def make_row(recs, T, design, rng, max_offset=1 << 20, time_dropout=0.2, event_dropout=0.05):
     row = {
         "ids": np.full(T, FILL, np.int64),
         "design": np.zeros((T, design.d), np.float32),
@@ -160,8 +161,10 @@ def make_row(recs, T, design, rng, max_offset=1 << 20, time_dropout=0.2):
         row["seq"][sl] = s
         row["pos"][sl] = rng.integers(0, max_offset) + np.arange(n)
         if "times" in r and rng.random() >= time_dropout:      # per-sequence dropout, as time.md asks
-            row["time"][sl] = r["times"]
-            row["time_known"][sl] = True
+            times = np.asarray(r["times"], np.float64)
+            events, which = np.unique(times, return_inverse=True)  # an event's tokens share its time
+            row["time"][sl] = times
+            row["time_known"][sl] = (rng.random(len(events)) >= event_dropout)[which]   # and per event
         for i, b in r["refs"]:
             row["ref"][at + i] = at + b
         row["loss"][sl] = True
