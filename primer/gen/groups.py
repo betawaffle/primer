@@ -13,7 +13,7 @@ from ..edit import apply_edit, occurrences
 from ..interp import Context, apply, evaluate, remember_literals
 from ..syntax import SPECIAL_FORMS, is_literal, parse_expr, quote, tokenize, unparse
 from ..values import ERR, Closure, Ostensive, Quote, show
-from ..vocab import VOCAB
+from ..vocab import MODEL_ONLY, VOCAB
 from .programs import ProgramGen, lit, op, rand_num, rand_str, replace, size_ok, substitute, subtrees, uses_var0
 
 
@@ -803,7 +803,7 @@ def _kinds(r):
     """Parts of speech: KIND of single words and of whole expressions."""
     ctx = Context(fuel=20_000)
     parts = []
-    names = [t.name for t in VOCAB.tokens if t.name not in _NEVER_QUOTED and t.family != "NEW"]
+    names = [t.name for t in VOCAB.tokens if t.name not in _NEVER_QUOTED | MODEL_ONLY]
     ops = [t.name for t in VOCAB.tokens if t.args and t.name not in SPECIAL_FORMS]
     word = f"NEW{r.randrange(16)}"
     if r.random() < 0.4:                         # a defined word is classed by what it is

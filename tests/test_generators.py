@@ -79,8 +79,8 @@ class TestGenerators(unittest.TestCase):
             rows = [json.loads(line) for p in sorted(Path(d).glob("*.jsonl")) for line in p.read_text().splitlines()]
             self.assertEqual(len(rows), 60)
             for row in rows:
-                self.assertLessEqual({"encoder", "group", "ids", "payloads", "text", "truth"}, set(row))
-                self.assertLessEqual(set(row), {"encoder", "group", "ids", "payloads", "text", "truth", "no_loss"})
+                self.assertLessEqual({"encoder", "group", "ids", "payloads", "refs", "text", "truth"}, set(row))
+                self.assertLessEqual(set(row), {"encoder", "group", "ids", "payloads", "refs", "text", "truth", "no_loss"})
 
 
 if __name__ == "__main__":

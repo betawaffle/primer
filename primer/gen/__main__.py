@@ -65,7 +65,8 @@ def _work(args):
                 if split == "train" and heldout(text):
                     stats["held out"] += 1
                     continue
-            h = digest(text)
+            rec = to_ids(text)
+            h = digest(text, rec)
             if h in seen:
                 stats["duplicates"] += 1
                 continue
@@ -78,7 +79,7 @@ def _work(args):
                 extra["no_loss"] = retracted_spans(text)
             seen.add(h)
             order.append(bytes.fromhex(h)[:16])
-            f.write(json.dumps({"group": g, "text": text, "truth": truth, **extra, **to_ids(text)}) + "\n")
+            f.write(json.dumps({"group": g, "text": text, "truth": truth, **extra, **rec}) + "\n")
             stats["written"] += 1
     return shard, stats, order
 

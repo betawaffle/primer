@@ -2,9 +2,9 @@ import unittest
 
 from primer.check import check, retracted_spans
 from primer.interp import evaluate
-from primer.serialize import canonical, from_ids, to_ids
+from primer.serialize import canonical, digest, from_ids, to_ids
 from primer.split import heldout
-from primer.syntax import SPECIAL_FORMS, parse_expr, unparse
+from primer.syntax import SPECIAL_FORMS, SyntaxErr, parse_expr, tokenize, unparse
 from primer.values import ERR
 from primer.vocab import VOCAB
 
@@ -95,6 +95,7 @@ class TestCore(unittest.TestCase):
         s = "BOS EVAL MUL INT<6> INT<7> RESULT INT<48> OOPS EVAL MUL INT<6> INT<7> RESULT INT<42> END"
         ids = to_ids(s)["ids"]
         self.assertEqual(retracted_spans(s), [[6, 7]])
+        self.assertEqual(retracted_spans("BOS KIND TOK OOPS FRAME END"), [])
         self.assertEqual(VOCAB.by_id[ids[6]].name, "INT")
         self.assertEqual(VOCAB.by_id[ids[7]].name, "OOPS")
 
@@ -116,10 +117,27 @@ class TestCore(unittest.TestCase):
             self.assertEqual(unparse(parse_expr(unparse(parse_expr(src)))), unparse(parse_expr(src)))
 
     def test_ids_roundtrip(self):
-        s = "BOS EQ TIME<2026-10-09 15:30> R3<NUM 5> FALSE END"
+        s = "BOS EQ TIME<2026-10-09 15:30> R0<NUM 5> FALSE END"
         rec = to_ids(s)
         self.assertEqual(from_ids(rec), s)
         self.assertEqual(rec["ids"][0], VOCAB["BOS"].id)
+
+    def test_names_become_pointers(self):
+        a = "BOS DEF NEW7 LAM LET V0 ADD V0 V1 END EX INT<2> IS NEW3 APP NEW7 INT<1> INT<2> EQ R9<INT 4> R9 TRUE END"
+        b = "BOS DEF NEW1 LAM LET V0 ADD V0 V1 END EX INT<2> IS NEW0 APP NEW1 INT<1> INT<2> EQ R2<INT 4> R2 TRUE END"
+        rec = to_ids(a)
+        self.assertEqual(rec, to_ids(b))                                    # the numbers in names carry nothing
+        self.assertEqual(from_ids(rec), "BOS DEF NEW0 LAM LET V0 ADD V0 V1 END EX INT<2> IS NEW1 "
+                                        "APP NEW0 INT<1> INT<2> EQ R0<INT 4> R0 TRUE END")
+        names = [VOCAB.by_id[t].name for t in rec["ids"]]
+        self.assertEqual(names[1:9], ["DEF", "NEW", "LAM", "LET", "REF", "ADD", "REF", "REF"])
+        self.assertEqual(rec["refs"][:3], [(5, 3), (7, 4), (8, 3)])   # LET's value is outside its scope
+        self.assertTrue(all(target < pos for pos, target in rec["refs"]))
+        self.assertEqual(digest(a), digest(b))
+        free = to_ids("BOS LET INT<1> MUL V0 V0 INT<1> EQ SPAN INT<4> INT<4> QUOTE V0 TRUE END")
+        self.assertIn((12, "0"), free["payloads"])                           # a free variable keeps its index
+        with self.assertRaises(SyntaxErr):
+            tokenize("BOS REF END")                                          # model-only tokens aren't text
         self.assertEqual(canonical("BOS NUM⟨2.0⟩ END"), canonical("BOS NUM<2> END"))
 
     def test_every_value_kind_has_a_vector(self):
@@ -146,7 +164,7 @@ class TestCore(unittest.TestCase):
         ids = [t.id for t in VOCAB.tokens]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(sorted(ids), list(range(len(ids))))             # no gaps
-        pinned = {"BOS": 0, "R0": 27, "LAM": 91, "EVAL": 134, "CHANCE": 183}   # ids must never change
+        pinned = {"BOS": 0, "REF": 28, "LAM": 29, "EVAL": 64, "CHANCE": 98}   # pins catch accidental renumbering
         self.assertEqual({k: VOCAB[k].id for k in pinned}, pinned)
 
 
