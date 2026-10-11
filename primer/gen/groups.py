@@ -8,10 +8,11 @@ generator can be wrong only about *what* to ask, never about the answer.
 """
 import datetime as dt
 
+from .. import world
 from ..check import bits, compare_functions, steps
 from ..edit import apply_edit, occurrences
 from ..interp import Context, apply, evaluate, remember_literals
-from ..syntax import SPECIAL_FORMS, is_literal, parse_expr, quote, tokenize, unparse
+from ..syntax import MISSING, SPECIAL_FORMS, is_literal, parse_expr, quote, tokenize, unparse
 from ..values import ERR, Closure, Ostensive, Quote, show
 from ..vocab import MODEL_ONLY, VOCAB
 from .programs import ProgramGen, lit, op, rand_num, rand_str, replace, size_ok, substitute, subtrees, uses_var0
@@ -881,10 +882,164 @@ def gen_quote(r):
     return r.choices([_quote_vs_use, _kinds, _spans, _parts], [2, 3, 3, 2])[0](r)
 
 
+# ---- world -------------------------------------------------------------------
+
+_PEOPLE = "sally anne bob cara dev eli fay gus hal ivy".split()
+_THINGS = {"ball": ["basket", "box", "bag", "drawer"], "door": ["open", "closed", "locked"],
+           "light": ["on", "off"], "plan": ["a", "b", "c"], "cat": ["sofa", "bed", "garden", "roof"]}
+
+
+class _World:
+    """Builds a world sequence as it goes: events, then questions about them,
+    each answered by the interpreter from the same events the checker will see."""
+
+    def __init__(self, r, n_nodes):
+        self.r, self.parts, self.ctx = r, [], Context(fuel=20_000)
+        names = r.sample(_PEOPLE, n_nodes)
+        slots = r.sample(range(12), n_nodes)    # slot numbers carry no meaning
+        self.nodes = [(f"R{k}", name) for k, name in zip(slots, names)]
+        self.seen = set()
+        self.keys = r.sample(sorted(_THINGS), r.choice([1, 1, 1, 2]))
+
+    def node(self, i):
+        """Text for node i: binds its slot the first time, a bare slot after."""
+        slot, name = self.nodes[i]
+        if slot in self.seen:
+            return slot
+        self.seen.add(slot)
+        self.ctx.slots[slot] = name
+        return f"{slot}<STR {name}>"
+
+    def pos(self):
+        return len(tokenize(_seq(*self.parts))) - 1
+
+    def see(self, i, k=None, v=None):
+        k = k or self.r.choice(self.keys)
+        if v is None:
+            now = world.actual(self.ctx.events, k)
+            v = self.r.choice([x for x in _THINGS[k] if x != now])
+        pos = self.pos()
+        self.parts.append(f"SEE {self.node(i)} STR<{k}> STR<{v}>")
+        self.ctx.events.append((pos, ("see", self.nodes[i][1], k, v)))
+        return k
+
+    def send(self, a, b, k, got):
+        if not world.holds(self.ctx.events, self.nodes[a][1], k):
+            raise Retry
+        pos = self.pos()
+        self.parts.append(f"SEND {self.node(a)} {self.node(b)} STR<{k}> {'GOT' if got else 'LOST'}")
+        self.ctx.events.append((pos, ("send", self.nodes[a][1], self.nodes[b][1], k, got)))
+
+    def ask(self, n=None, wrong_bias=0.7):
+        """Ask questions, mostly about nodes that are wrong about something."""
+        r, ev = self.r, self.ctx.events
+        slot = lambda i: ("slot", self.nodes[i][0], MISSING)
+        key = lambda k: lit(k)
+        known = [i for i, (s, _) in enumerate(self.nodes) if s in self.seen]
+        qs = []
+        for k in self.keys:
+            truth = world.actual(ev, k)
+            if truth is None:
+                continue
+            qs.append((0.5, op("ACTUAL", key(k))))
+            for i in known:
+                b = world.belief(ev, self.nodes[i][1], k)
+                wrong = b is not None and b != truth
+                w = 3 if wrong else 1
+                qs.append((w, op("BELIEF", slot(i), key(k))))
+                if wrong or r.random() < 0.3:
+                    qs.append((w, op("WHY", slot(i), key(k))))
+                if wrong and r.random() < 0.5:
+                    qs.append((w, op("NEQ", op("BELIEF", slot(i), key(k)), op("ACTUAL", key(k)))))
+                for j in known:
+                    if j != i:
+                        t = world.thinks(ev, self.nodes[j][1], self.nodes[i][1], k)
+                        qs.append((3 if t is not None and t != b else 1,
+                                   op("THINKS", slot(j), slot(i), key(k))))
+        if not qs:
+            raise Retry
+        n = n or r.randint(2, 4)
+        picked = []
+        for _ in range(min(n, len(qs))):
+            w, q = r.choices(qs, [w for w, _ in qs])[0]
+            qs.remove((w, q))
+            picked.append(q)
+        for q in picked:
+            self.parts.append(_statement(q, self.ctx))
+
+    def text(self):
+        return _seq(*self.parts)
+
+
+def _false_belief(r):
+    """Sally-Anne: one node sees where something is and tells another; the thing
+    then moves while the first isn't looking. Sometimes a message about the
+    move is sent and lost; sometimes a third node watches."""
+    w = _World(r, r.choice([2, 2, 3]))
+    k = w.see(0)
+    w.send(0, 1, k, True)
+    if r.random() < 0.3:
+        w.send(1, 0, k, True)            # anne confirms back
+    mover = r.choice([1, 1, 2]) if len(w.nodes) == 3 else 1
+    if mover == 2:
+        w.send(1, 2, k, True)
+    w.see(mover, k)
+    if r.random() < 0.5:                 # tries to tell sally, and it is lost (or not)
+        w.send(mover, 0, k, r.random() < 0.3)
+    w.ask()
+    return w.text(), None
+
+
+def _relay(r):
+    """A value passed along a short chain; one hop lost, or the source moves on
+    after passing it."""
+    n = r.choice([3, 3])
+    w = _World(r, n)
+    k = w.see(0)
+    lost = r.randrange(n - 1) if r.random() < 0.5 else None
+    for i in range(n - 1):
+        if lost is not None and i == lost and r.random() < 0.5:
+            w.see(i, k)                  # it changes just before being passed on
+        w.send(i, i + 1, k, i != lost)
+    if lost is None:
+        w.see(r.randrange(n), k)
+        if r.random() < 0.5:
+            w.send(0, n - 1, k, False)
+    w.ask(r.randint(2, 4))
+    return w.text(), None
+
+
+def _gossip(r):
+    """Random sightings and messages among a few nodes, with questions asked
+    part way and again at the end, since beliefs change as messages arrive."""
+    w = _World(r, r.randint(2, 4))
+    w.see(r.randrange(len(w.nodes)))
+    for step in range(r.randint(3, 7)):
+        if r.random() < 0.3:
+            w.see(r.randrange(len(w.nodes)))
+            continue
+        holders = [i for i in range(len(w.nodes)) for k in w.keys
+                   if world.holds(w.ctx.events, w.nodes[i][1], k)]
+        a = r.choice(holders)
+        b = r.choice([i for i in range(len(w.nodes)) if i != a])
+        k = r.choice([k for k in w.keys if world.holds(w.ctx.events, w.nodes[a][1], k)])
+        w.send(a, b, k, r.random() < 0.7)
+        if step == 2 and r.random() < 0.4:
+            w.ask(1)
+    w.ask()
+    return w.text(), None
+
+
+def gen_world(r):
+    """False belief: who holds what after sightings and messages, some lost; what
+    one node thinks another holds; and which lost message is to blame."""
+    return r.choices([_false_belief, _relay, _gossip], [4, 3, 3])[0](r)
+
+
 # In bootstrap order, the same as vocab.toml's groups (a test checks).
 GROUPS = {"syntax": gen_syntax, "logic": gen_logic, "values": gen_values, "compute": gen_compute,
           "teach": gen_teach, "quote": gen_quote, "edit": gen_edit, "episode": gen_episode,
-          "think": gen_think, "belief": gen_belief, "agenda": gen_agenda}
+          "think": gen_think, "belief": gen_belief, "agenda": gen_agenda, "world": gen_world}
 
 
 def generate(r, group, max_tries=200):

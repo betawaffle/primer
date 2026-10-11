@@ -27,7 +27,7 @@ from .groups import GROUPS, generate
 from .heldout import generate_test
 
 DEFAULT_WEIGHTS = {"syntax": 1, "logic": 2, "values": 2, "compute": 4, "teach": 4, "quote": 3, "edit": 4,
-                   "episode": 3, "think": 4, "belief": 3, "agenda": 2}
+                   "episode": 3, "think": 4, "belief": 3, "agenda": 2, "world": 3}
 
 
 def parse_groups(spec):

@@ -40,6 +40,7 @@ Decisions Andy has agreed to in the project's design threads that the code doesn
 - The generator mix will be set by a bandit scoring each knob (group, depth, form) by learning progress on a fixed probe set. No per-example influence scoring.
 - Held-out combinations (`primer/split.py`) never appear in training; test-split accuracy measures composition.
 - First simulated world: a network sim (nodes, links with latency and loss, messages as records). Gridworld and signal sims are parked.
+- Its first use is the false-belief test (2026-10-11): Andy wanted a demonstration of understanding in human terms, not just simple stuff. The `world` group has nodes see things and send messages that may be lost, and asks what each believes, what one thinks another believes, and which lost message is to blame. Longer relays are held out to test transfer. Latency, records as messages and multi-agent goals come later.
 
 ## Benchmarks
 

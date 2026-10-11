@@ -7,7 +7,7 @@ or from the model can always be run safely.
 """
 import math
 
-from . import vsa
+from . import vsa, world
 from .syntax import MISSING, SyntaxErr, children, quote, tokenize
 from .values import ERR, Closure, Ostensive, Sym, kind, numeric, valeq
 from .vocab import VOCAB
@@ -29,6 +29,7 @@ class Context:
         self.fuel = fuel
         self.tokens = None  # the whole sequence, for SPAN (set by the checker)
         self.before = 0     # SPAN may only point at tokens before this position
+        self.events = []    # world events so far, (position, statement), for BELIEF etc.
 
     def remember(self, v):
         """Add a value and everything nested inside it to CLEAN's memory."""
@@ -313,6 +314,9 @@ def _op(name, args, env, ctx):
     if name == "KIND":
         _need(kind(v[0]) == "EXPR")
         return Sym(category(v[0].text, ctx))
+    if name in ("ACTUAL", "BELIEF", "THINKS", "WHY"):
+        f = {"ACTUAL": world.actual, "BELIEF": world.belief, "THINKS": world.thinks, "WHY": world.why}[name]
+        return f(ctx.events, *v)
     raise ValueError(f"no implementation for {name}")
 
 

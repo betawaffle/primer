@@ -10,12 +10,15 @@ split is composing pieces it learned apart, not recalling what it saw.
   bet_on_word   a BET on a word defined in the sequence (training bets on spelled-out predicates
                 and defines words elsewhere)
   wrap_at       a WRAP that needs AT (training has WRAP and AT, never together)
+  long_relay    a belief that reached a node through RELAY_HOPS or more messages, and a
+                question about it (training relays go at most two hops)
 """
 from .check import sequence_statements
-from .syntax import SyntaxErr, children
+from .syntax import SyntaxErr, children, unparse
 
 TAGS = {"lit", "var", "word", "slot", "op", "lam", "let", "list", "rec", "hole", "part"}
-DEEP_OPS = 8   # under 0.3% of ordinary generated sequences reach this
+DEEP_OPS = 8
+RELAY_HOPS = 3   # under 0.3% of ordinary generated sequences reach this
 
 
 def nodes(x):
@@ -51,7 +54,30 @@ def _wrap_at(stmts):
     return any(it[0] == "patch" and any(at is not None and e[0] == "wrap" for at, e in it[2]) for it in stmts)
 
 
-RULES = {"fold_in_map": _fold_in_map, "deep": _deep, "bet_on_word": _bet_on_word, "wrap_at": _wrap_at}
+def _node(x):
+    """A node's identity in a world statement: its slot's name, or its text."""
+    return x[1] if x[0] == "slot" else unparse(x)
+
+
+def _long_relay(stmts):
+    hops, far = {}, set()
+    for it in stmts:
+        if it[0] == "see":
+            hops[_node(it[1]), unparse(it[2])] = 0
+        elif it[0] == "send" and it[4] == "GOT":
+            a, b, k = _node(it[1]), _node(it[2]), unparse(it[3])
+            if (a, k) in hops:
+                hops[b, k] = hops[a, k] + 1
+                if hops[b, k] >= RELAY_HOPS:
+                    far.add(b)
+        elif far and any(n[0] == "op" and n[1] in ("BELIEF", "THINKS", "WHY") and
+                         any(_node(a) in far for a in n[2][:-1]) for n in nodes(it)):
+            return True
+    return False
+
+
+RULES = {"fold_in_map": _fold_in_map, "deep": _deep, "bet_on_word": _bet_on_word, "wrap_at": _wrap_at,
+         "long_relay": _long_relay}
 
 
 def heldout(text):
