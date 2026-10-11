@@ -1,8 +1,9 @@
 """Checks a whole training sequence: parses its items and verifies every claim.
 
-A sequence is BOS item* END, optionally followed by PADs. If it contains a
-HOLE, the tokens between the last two ENDs are the filler: they are put in
-place of the HOLE and the completed sequence is checked.
+A sequence is BOS item* EOS, optionally followed by PADs. If it contains a
+HOLE, the filler follows the EOS and ends with END (BOS ... HOLE ... EOS
+filler END): it is put in place of the HOLE and the completed sequence is
+checked. END otherwise only closes a form's body, as in DEF word expr END.
 
 Items:
   expr value                 implicit evaluation (value omitted if expr is already a value)
@@ -230,21 +231,25 @@ def sequence_items(text, info=None):
     toks = tokenize(text)
     while toks and toks[-1].name == "PAD":
         toks.pop()
-    if not toks or toks[0].name != "BOS" or toks[-1].name != "END":
-        raise SyntaxErr("a sequence is BOS ... END")
+    eos = [i for i, t in enumerate(toks) if t.name == "EOS"]
+    if not toks or toks[0].name != "BOS" or len(eos) != 1:
+        raise SyntaxErr("a sequence is BOS ... EOS")
     holes = [i for i, t in enumerate(toks) if t.name == "HOLE"]
+    e = eos[0]
     if holes:
         if len(holes) > 1:
             raise SyntaxErr("only one HOLE per sequence")
-        ends = [i for i, t in enumerate(toks) if t.name == "END"]
-        if len(ends) < 2:
-            raise SyntaxErr("a HOLE needs a filler: ... END filler END")
-        pen = ends[-2]
-        filler, main = toks[pen + 1:-1], toks[:pen + 1]
+        if holes[0] > e:
+            raise SyntaxErr("the HOLE must come before EOS")
+        if toks[-1].name != "END":
+            raise SyntaxErr("a HOLE needs a filler: ... EOS filler END")
+        filler, main = toks[e + 1:-1], toks[:e + 1]
         if not filler:
             raise SyntaxErr("empty filler")
         h = holes[0]
         toks = main[:h] + filler + main[h + 1:]
+    elif e != len(toks) - 1:
+        raise SyntaxErr("nothing may follow EOS but PADs, or a HOLE's filler")
     starts = []
     items = parse_items(toks[1:-1], starts)
     if info is not None:

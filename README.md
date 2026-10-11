@@ -10,7 +10,7 @@ A small typed language for training from-scratch models: a vocabulary of a coupl
 
 ```
 python3 -m unittest discover -s tests -t .
-python3 -c "from primer.check import check; print(check('BOS ADD INT<2> INT<3> INT<5> END'))"
+python3 -c "from primer.check import check; print(check('BOS ADD INT<2> INT<3> INT<5> EOS'))"
 python3 -m primer.gen --groups syntax-episode --count 100000 --out data/   # checked training data, one process per core
 ```
 

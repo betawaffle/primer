@@ -36,7 +36,7 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 | FUN | a function, made by `LAM` |
 | VEC | a raw vector, from `BIND` / `UNBIND` / `BUNDLE` |
 | EXPR | an expression (or one token) held as data: `QUOTE`, `TOK`, `SPAN` |
-| SYM | a symbol used as a value: `NOUN`, `VERB`, `ADJ`, `FRAME` |
+| SYM | a symbol used as a value: `NOUN`, `VERB`, `ADJ`, `MARK` |
 | ERR | the result of anything that fails |
 
 ## Evaluation
@@ -58,9 +58,18 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 
 `ENCODER_VERSION` changes whenever an encoding changes; serialized data records it.
 
+## Terms
+
+- **Position**: a token's index in its sequence, counting `BOS` as 0 (training will add a random start offset). Never renumbered, even after eviction; `SPAN` addresses it.
+- **Form**: the shape of a multi-token construct, such as `DEF word expr END` or `BET p pred list`.
+- **Item**: one instance of a form in a sequence: one claim, or one step such as `ACT EVAL e OBS v`.
+- **Episode**: one goal pursued to its outcome: `GOAL`, actions, then `ACT DONE x` answered `YES` or `NO` (or the budget runs out). A sequence can hold several; `NEXT` starts the next.
+- **Sequence**: `BOS … EOS`. One numbering of positions, one scope for defined words, slots and the agenda. A teaching row is a short sequence; a live agent run is one long one.
+- **Context**: the part of the current sequence the model can see now. It never spans two sequences; only the store carries over between them.
+
 ## Sequences
 
-`BOS item* END`, optionally followed by `PAD`s. Items:
+`BOS item* EOS`, optionally followed by `PAD`s. `END` never ends a sequence; it only closes a form's body, as in `DEF word expr END`. Items:
 
 | Item | Claim checked |
 |---|---|
@@ -81,7 +90,7 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 | `NEXT` | takes the oldest agenda item; the next item must be its `GOAL`, or a `DEF` of the queued function. Ends the current episode |
 | `SURPRISE s` | right after a bet is settled: s = −log2 of the probability the bet gave to what happened, in bits |
 
-**Holes:** a sequence may contain one `HOLE`. The tokens between its last two `END`s are the filler; the checker puts them in place of the hole and checks the result, so any correct filler passes.
+**Holes:** a sequence may contain one `HOLE`. Its filler comes after the `EOS` and ends with `END` (`BOS … HOLE … EOS filler END`); the checker puts it in place of the hole and checks the result, so any correct filler passes.
 
 ## Quoting
 
@@ -91,7 +100,7 @@ Every other expression is *used*: it stands for its value. A quote *mentions* on
 - `TOK t` takes exactly **one token**, whatever its arity: `TOK ADD` is the token itself. A token that is already a complete expression has one canonical form, `QUOTE`: `TOK TRUE` prints as `QUOTE TRUE`.
 - `SPAN a b` is tokens a to b (inclusive) of the current sequence as a quote, counting `BOS` as 0, after any `HOLE` is filled. It may only point at tokens before the item it is in, and the span must be one complete expression or one token, otherwise `ERR`. Outside a checked sequence it is always `ERR`.
 - Two quotes are equal when their text is (literals in canonical form). A quote never equals the value of the expression it holds.
-- `KIND q` is the part of speech of the token heading q, from the type table: values, slots, variables, lists and records are `NOUN`; operators are `VERB`, except tests (they return `BOOL` from arguments that aren't all `BOOL`, e.g. `LT`, `EQ`), which are `ADJ`; connectives like `AND` are `VERB`; everything else (syntax, teaching and episode tokens) is `FRAME`. A `NEW` word is classed by what it is now: a function is a `VERB`, a word known from examples an `ADJ`, otherwise a `NOUN`.
+- `KIND q` is the part of speech of the token heading q, from the type table: values, slots, variables, lists and records are `NOUN`; operators are `VERB`, except tests (they return `BOOL` from arguments that aren't all `BOOL`, e.g. `LT`, `EQ`), which are `ADJ`; connectives like `AND` are `VERB`; everything else (syntax, teaching and episode tokens) is `MARK`. A `NEW` word is classed by what it is now: a function is a `VERB`, a word known from examples an `ADJ`, otherwise a `NOUN`.
 - Vectors: a quote is the bundle of position ⊛ token atom, bound to an `EXPR` role; a symbol is its own atom.
 
 ## Edits
@@ -106,7 +115,7 @@ A thought is an `EVAL … RESULT` the model writes before acting: free, unlike a
 
 ## Beliefs
 
-`CHANCE pred list` is the fraction of the list's items that pass pred (a NUM; `ERR` for an empty list). A `BET` must be settled (by a draw and its outcome, or by the action it precedes) before the next `BET` and before `END`.
+`CHANCE pred list` is the fraction of the list's items that pass pred (a NUM; `ERR` for an empty list). A `BET` must be settled (by a draw and its outcome, or by the action it precedes) before the next `BET` and before `EOS`.
 
 The checker has two modes. `check(text)` is for training data: a draw bet must state the exact chance, and a bet on an action is *unverified* (there is no right answer to how sure the model should be), so generators never write one. `check(text, bets="score")` is for grading a model: any probability is accepted, and `Report.scores` lists `{p, outcome, bits}` for every settled bet. Average bits is the log loss; calibration is how well p matches the observed frequencies. `SURPRISE` itself is always checked exactly, since it is arithmetic.
 

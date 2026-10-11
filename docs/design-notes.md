@@ -69,7 +69,7 @@ Measure sample efficiency and generalization to held-out tasks per FLOP. Models 
 Setup assumed throughout: a small decoder-only transformer with **tied embeddings**, so one table `E` (one row per token) is used both to read tokens in and, by dot product with the final hidden state, to score which token comes next. That tie is what makes the tricks below work: the final hidden state and the token rows live in the same space.
 
 **Step 1: initialize from contexts (no gradient).**
-Take sequences where the new token *would* go. For a defined token, that's every place its definition currently appears expanded in the corpus. For an ostensive token, it's a frame like:
+Take sequences where the new token *would* go. For a defined token, that's every place its definition currently appears expanded in the corpus. For an ostensive token, it's a template like:
 ```
 EX <example 1> IS ▢
 EX <example 2> IS ▢
@@ -84,7 +84,7 @@ That's gradient descent on a few hundred numbers, which takes seconds. Then unfr
 
 ## 2. "Expand the token back into its definition": how?
 
-A **dictionary task** with its own frame, generated automatically from the definition table and always kept in the training mix:
+A **dictionary task** with its own form, generated automatically from the definition table and always kept in the training mix:
 ```
 DEF new :=  →  model must generate: dup swap add END
 ```
@@ -126,7 +126,7 @@ peek(R3, val_loss, window=NUM)                   → curve summary bound to R4
 - `lookup propose launch peek`: op tokens.
 - `task sort lr val_loss budget`: schema-field tokens (finite, meaningful).
 - `MODADD`: enum-value token.
-- `R0..R63`: **slot tokens**. The store binds real run ids to slots for this episode. The model refers to "the run in slot 0", never to `run_8812`. Like registers, or variables in a program. 64 tokens instead of millions.
+- `R0..R63`: **slot tokens**. The store binds real run ids to slots for this sequence. The model refers to "the run in slot 0", never to `run_8812`. Like registers, or variables in a program. 64 tokens instead of millions.
 - `NUM`: one token whose input vector is computed from the value (e.g. `E[NUM]` scaled by the value, or sin/cos features of log-value). On output, a small regression head emits the number. No digit spelling, no per-number tokens.
 - Facts ("what LR worked best on MODADD last week?") never live in weights: the model learns *to emit the lookup*; the store answers.
 - Raw text and logs never enter the context; tools return a few features or bind an object to a slot the model can pass to other ops.

@@ -41,7 +41,7 @@ def _item(node, ctx=None):
 
 
 def _seq(*items):
-    return " ".join(["BOS", *items, "END"])
+    return " ".join(["BOS", *items, "EOS"])
 
 
 def _hole_item(r, node, value_text, prefix=""):
@@ -51,7 +51,7 @@ def _hole_item(r, node, value_text, prefix=""):
         raise Retry
     path, sub = r.choice(spots)
     holed = replace(node, path, ("hole",))
-    return f"BOS {prefix}{unparse(holed)} {value_text} END {unparse(sub)} END"
+    return f"BOS {prefix}{unparse(holed)} {value_text} EOS {unparse(sub)} END"
 
 
 # ---- syntax --------------------------------------------------------
@@ -69,7 +69,7 @@ def gen_syntax(r):
         i = r.randrange(len(toks))
         filler = toks[i]
         toks = toks[:i] + ["HOLE"] + toks[i + 1:]
-        return f"BOS {' '.join(toks)} END {filler} END", None
+        return f"BOS {' '.join(toks)} EOS {filler} END", None
     pad = " PAD" * (r.randint(1, 4) if r.random() < 0.2 else 0)
     return _seq(" ".join(toks)) + pad, None
 
@@ -162,7 +162,7 @@ def gen_values(r):
         items.append(_item(node))
     if len(items) == 1 and r.random() < 0.2:
         node = op("LT", lit(_value(r, "INT")), ("hole",))
-        return f"BOS {unparse(node)} TRUE END {show(node[2][0][1] + r.randint(1, 9))} END", None
+        return f"BOS {unparse(node)} TRUE EOS {show(node[2][0][1] + r.randint(1, 9))} END", None
     return _seq(*items), None
 
 
@@ -253,14 +253,14 @@ def _predicate(r):
     return "LAM " + tmpl.format(**params(r)), domain
 
 
-def _frame_eval(r, words):
+def _teach_eval(r, words):
     node = _program(r, depth=r.randint(1, 3))
     if r.random() < 0.2:
         return _hole_item(r, node, f"RESULT {show(_eval(node))}", prefix="EVAL "), None
     return _seq(f"EVAL {unparse(node)} RESULT {show(_eval(node))}"), None
 
 
-def _frame_define(r, words):
+def _teach_define(r, words):
     ctx = Context()
     names = r.sample([f"NEW{i}" for i in range(16)], 2)
     parts, defined = [], []
@@ -288,7 +288,7 @@ def _eval_fun(body, ctx, name):
     return f
 
 
-def _frame_examples(r, words):
+def _teach_examples(r, words):
     src, domain = _predicate(r)
     pred = parse_expr(src)
     name = f"NEW{r.randrange(16)}"
@@ -326,7 +326,7 @@ _REWRITES = [
 ]
 
 
-def _frame_relation(r, words):
+def _teach_relation(r, words):
     body = _unary(r)
     if r.random() < 0.5:
         spots = [(p, n) for p, n in subtrees(body)]
@@ -351,7 +351,7 @@ def _frame_relation(r, words):
     return _seq(f"DEF {a} LAM {unparse(body)} END", f"DEF {b} LAM {unparse(other)} END", f"{rel} {a} {b}"), None
 
 
-def _frame_ask_defined(r, words):
+def _teach_ask_defined(r, words):
     src, domain = _predicate(r)
     name = f"NEW{r.randrange(16)}"
     pred = parse_expr(src)
@@ -366,9 +366,9 @@ def _frame_ask_defined(r, words):
 
 
 def gen_teach(r):
-    frame = r.choices([_frame_eval, _frame_define, _frame_examples, _frame_relation, _frame_ask_defined],
+    item = r.choices([_teach_eval, _teach_define, _teach_examples, _teach_relation, _teach_ask_defined],
                       [2, 3, 3, 2, 1])[0]
-    return frame(r, ())
+    return item(r, ())
 
 
 # ---- episode -----------------------------------------------------------------
@@ -496,7 +496,7 @@ def gen_belief(r, bet_on_word=None):
         if r.random() < 0.7:
             tail += f" SURPRISE {show(bits(p, hit))}"
         if i == rounds - 1 and r.random() < 0.15:
-            text = " ".join(["BOS", *parts, f"BET HOLE {pred_text} {unparse(xs)}", tail, "END", show(p), "END"])
+            text = " ".join(["BOS", *parts, f"BET HOLE {pred_text} {unparse(xs)}", tail, "EOS", show(p), "END"])
             return text, None
         parts.append(f"{bet} {tail}")
     return _seq(*parts), None
@@ -592,7 +592,7 @@ def gen_edit(r):
     fix = _make_edit(bad, path, dict(subtrees(good))[path])
     if fix[0] == "replace" and r.random() < 0.2:   # synthesize the fix
         holed = ("replace", fix[1], fix[2], ("hole",))
-        return " ".join(["BOS", *parts, f"PATCH {w} {_edit_text(holed)} END", f"{check} TRUE", "END",
+        return " ".join(["BOS", *parts, f"PATCH {w} {_edit_text(holed)} END", f"{check} TRUE", "EOS",
                          unparse(fix[3]), "END"]), None
     parts += [f"PATCH {w} {_edit_text(fix)} END", f"{check} TRUE"]
     return _seq(*parts), None
@@ -780,7 +780,7 @@ def gen_agenda(r):
 
 # ---- quote --------------------------------------------------------------------
 
-_NEVER_QUOTED = {"BOS", "PAD", "HOLE"}   # would confuse sequence splitting or hole filling
+_NEVER_QUOTED = {"BOS", "EOS", "PAD", "HOLE"}   # would confuse sequence splitting or hole filling
 
 
 def _quote_vs_use(r):
@@ -834,7 +834,7 @@ def _spans(r):
     parts, exprs = [], []
     for _ in range(r.randint(1, 2)):
         node = _program(r, depth=r.randint(1, 3))
-        start = len(tokenize(_seq(*parts))) - 1      # where this item begins (before the final END)
+        start = len(tokenize(_seq(*parts))) - 1      # where this item begins (before the final EOS)
         parts.append(_item(node, ctx))
         exprs.append((start, node))
     start, node = r.choice(exprs)
