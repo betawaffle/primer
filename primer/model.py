@@ -10,6 +10,10 @@ What it takes from the design threads (docs/decisions.md):
   a pointer head scores earlier binder positions of the same sequence.
 - Order: RoPE on the stable position (any start offset; angles are taken
   mod 2π in float64 so large offsets lose nothing).
+- Eviction: a collapsed expression's keys vanish for every query after
+  its value is complete (the batch's evict column), which is exactly
+  deleting KV rows at inference. Positions never change, so nothing is
+  recomputed.
 - Elapsed time: some planes of every head rotate by event time instead.
   Unknown time zeroes those rotated planes and sets a "time known" bit.
 - Every head has a learned gate per frequency band, for order and time
@@ -23,8 +27,7 @@ What it takes from the design threads (docs/decisions.md):
   regression head. Exact decoding (dec_int, dec_num)
   needs the full VSA vector and is later work.
 
-Not here yet: eviction masks (gap and mask mode), constrained decoding,
-local-window heads.
+Not here yet: constrained decoding, local-window heads.
 """
 import math
 from dataclasses import asdict, dataclass
@@ -178,6 +181,8 @@ class Model(nn.Module):
         same = (seq[:, :, None] == seq[:, None, :]) & (seq[:, :, None] >= 0)
         causal = torch.ones_like(same[0]).tril()
         allowed = same & causal
+        if "evict" in b:    # an evicted key is invisible to every query after its eviction
+            allowed &= torch.arange(ids.shape[1], device=ids.device)[None, :, None] <= b["evict"][:, None, :]
         allowed |= torch.eye(ids.shape[1], dtype=torch.bool, device=ids.device)   # fill rows see themselves
         mask = torch.zeros(allowed.shape, dtype=x.dtype, device=x.device).masked_fill(~allowed, -math.inf)[:, None]
         ref = b["ref"]

@@ -5,6 +5,7 @@ import numpy as np
 
 from primer.batches import FILL, Design, make_row, pack, stack
 from primer.check import retracted_spans
+from primer.collapse import collapsible
 from primer.serialize import to_ids
 from primer.vocab import VOCAB
 
@@ -85,6 +86,23 @@ class TestBatches(unittest.TestCase):
         self.assertTrue(np.allclose(d[4], d[9]) and np.allclose(d[5], d[10]))
         self.assertFalse(np.allclose(d[4], DESIGN.vector(VOCAB["INT"].id, "0")))   # V0 is not INT<0>
 
+    def test_eviction_modes(self):
+        text = "BOS DEF<NEW0> LAM ADD V0 INT<1> EVAL APP NEW0 INT<4> RESULT INT<5> DEF<NEW1> NEW0 EOS"
+        r = to_ids(text)
+        r["collapse"] = collapsible(text, r["refs"])
+        self.assertEqual(r["collapse"], [(7, 10, 11)])         # APP NEW0 INT<4>, seen through INT<5>
+        b = make_row([r], 32, DESIGN, np.random.default_rng(0), collapse=1.0, gap_mode=0.0)
+        self.assertEqual(list(b["evict"][7:10]), [11] * 3)
+        self.assertTrue((b["evict"][:7] == 32).all() and (b["evict"][10:] == 32).all())
+        g = make_row([r], 32, DESIGN, np.random.default_rng(0), collapse=1.0, gap_mode=1.0)
+        n = len(r["ids"]) - 3
+        self.assertEqual(list(g["ids"][:n]), [i for k, i in enumerate(r["ids"]) if not 7 <= k < 10])
+        self.assertEqual(g["pos"][7] - g["pos"][6], 4)          # the gap stays in the positions
+        self.assertFalse(g["loss"][7:9].any())     # RESULT follows a stranger, and INT<5> would be a guess
+        self.assertTrue(g["loss"][:7].all() and g["loss"][9:n].all())
+        self.assertEqual(g["ref"][n - 2], 1)                     # the last NEW0 still points at its DEF
+        self.assertTrue((g["evict"] == 32).all())
+
     def test_pack(self):
         rows = list(pack(recs() * 10, 64))
         for rw in rows:
@@ -131,6 +149,22 @@ class TestModel(unittest.TestCase):
         h = self.hidden(b)
         b["time"][:] = np.random.default_rng(1).uniform(0, 1e9, 64)
         self.assertTrue(torch.equal(h, self.hidden(b)))
+
+    def test_evicted_keys_are_gone(self):
+        """In one layer, a query after the eviction reads nothing from the
+        evicted tokens, while the value that replaces them still did."""
+        m = Model(Config(d=64, d_design=16, layers=1, heads=4, time_planes=2), DESIGN.table).eval()
+        text = "BOS EVAL ADD INT<2> INT<3> RESULT INT<5> MUL INT<2> INT<2> INT<4> EOS"
+        r = to_ids(text)
+        r["collapse"] = collapsible(text, r["refs"])
+        b = stack([make_row([r], 16, DESIGN, np.random.default_rng(0), collapse=1.0, gap_mode=0.0)])
+        with torch.no_grad():
+            h = m(to_torch(b, "cpu"))[0]
+            b["design"][0, 2:5] = 0
+            b["ids"][0, 2:5] = VOCAB["SUB"].id
+            h2 = m(to_torch(b, "cpu"))[0]
+        self.assertFalse(torch.allclose(h[0, 6], h2[0, 6]))     # INT<5> still sees ADD ...
+        self.assertTrue(torch.allclose(h[0, 7:12], h2[0, 7:12]))  # after it, nothing does
 
     def test_sequences_are_separate(self):
         b = self.batch()

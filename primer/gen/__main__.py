@@ -5,7 +5,8 @@
 Each line: {"group", "text", "truth", "encoder", "ids", "payloads"}, plus
 "heldout" (the rules it matches) in the test split, "no_loss" for sequences
 with OOPS, and "times" (seconds, one per token) for sequences with actions,
-from the simulated clock in primer/clock.py. --split train (the
+from the simulated clock in primer/clock.py, and "collapse" (the spans the
+harness may evict, see primer/collapse.py). --split train (the
 default) leaves out every sequence matching a held-out rule; --split test
 writes only such sequences (see primer/split.py). Repeats are removed across
 all shards of a run, and the run tops itself up to --count. Every
@@ -24,6 +25,7 @@ from pathlib import Path
 
 from ..check import check, retracted_spans
 from ..clock import event_times
+from ..collapse import collapsible
 from ..serialize import digest, to_ids
 from ..split import RULES, heldout
 from .groups import GROUPS, generate
@@ -80,6 +82,9 @@ def _work(args):
                 if rep.errors or rep.unverified:
                     stats["rejected"] += 1
                     continue
+            spans = collapsible(text, rec["refs"])
+            if spans:
+                extra["collapse"] = spans
             times = event_times(text, clock, rep)
             if times is not None:
                 extra["times"] = times

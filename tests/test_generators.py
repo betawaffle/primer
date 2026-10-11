@@ -80,7 +80,7 @@ class TestGenerators(unittest.TestCase):
             self.assertEqual(len(rows), 60)
             for row in rows:
                 self.assertLessEqual({"encoder", "group", "ids", "payloads", "refs", "text", "truth"}, set(row))
-                self.assertLessEqual(set(row), {"encoder", "group", "ids", "payloads", "refs", "text", "truth", "no_loss", "times"})
+                self.assertLessEqual(set(row), {"encoder", "group", "ids", "payloads", "refs", "text", "truth", "no_loss", "times", "collapse"})
                 self.assertEqual("times" in row, " ACT " in row["text"])
                 if "times" in row:
                     self.assertEqual(len(row["times"]), len(row["ids"]))
