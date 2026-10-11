@@ -16,6 +16,8 @@ class Token:
     ret: str = ""
     vsa: str = "atom"
     note: str = ""
+    form: str | None = None   # what follows this token in a statement (see primer/forms.py)
+    part: str = "statement"   # what its form is a part of
     family: str = ""  # "R", "V" or "NEW" for a name like R3, V0, NEW12
     index: int = -1   # the number in that name
 
@@ -46,7 +48,8 @@ class Vocab:
                 raise ValueError(f'duplicate token id {row["id"]} ({row["name"]})')
             seen.add(row["id"])
             tok = Token(id=row["id"], name=row["name"], group=row["group"], args=tuple(row.get("args", ())),
-                        ret=row.get("ret", ""), vsa=row.get("vsa", "atom"), note=row.get("note", ""))
+                        ret=row.get("ret", ""), vsa=row.get("vsa", "atom"), note=row.get("note", ""),
+                        form=row.get("form"), part=row.get("part", "statement"))
             v.tokens.append(tok)
             v.by_name[tok.name] = tok
             v.by_id[tok.id] = tok
