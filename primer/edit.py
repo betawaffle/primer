@@ -1,6 +1,6 @@
 """Edits: changing a program in place instead of rewriting it.
 
-A PATCH item changes a defined word's definition with one or more edits:
+A PATCH statement changes a defined word's definition with one or more edits:
 
   REPLACE old new          the subexpression old becomes new
   WRAP old OP args...      old becomes the first argument of OP: OP old args...

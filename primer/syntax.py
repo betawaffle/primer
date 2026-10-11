@@ -177,7 +177,7 @@ def quote(text):
         try:
             node = Parser(toks).expr()
         except SyntaxErr:
-            return Quote(str(toks[0]), False)   # an operator or frame token on its own
+            return Quote(str(toks[0]), False)   # an operator or mark token on its own
         return Quote(unparse(node), True)
     return Quote(unparse(parse_expr(text)), True)
 

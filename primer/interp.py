@@ -125,7 +125,7 @@ def category(text, ctx):
     """KIND: the part of speech of the token heading a quote, read off the type
     table. Values and handles are NOUN; operators are VERB, except those that
     test something (they return BOOL from non-BOOL arguments), which are ADJ;
-    syntax, teaching and episode tokens are FRAME. A defined word is classed by
+    syntax, teaching and episode tokens are MARK. A defined word is classed by
     what it is now: a function is a VERB, a word known from examples an ADJ."""
     head = tokenize(text)[0].name
     tok = VOCAB[head]
@@ -139,7 +139,7 @@ def category(text, ctx):
     if tok.args:
         tests = tok.ret == "BOOL" and any(a != "BOOL" for a in tok.args)
         return "ADJ" if tests else "VERB"
-    return "FRAME"
+    return "MARK"
 
 
 def _apply(f, x, ctx):
