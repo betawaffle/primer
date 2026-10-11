@@ -129,6 +129,11 @@ class TestModel(unittest.TestCase):
             opt.step()
         self.assertLess(float(out["token"]), first["token"] / 2)
         self.assertGreater(float(out["pointer_acc"]), 0.99)
+        sc = self.m.score(b)
+        self.assertEqual(sc["exact"][1], sc["token"][1])
+        self.assertLessEqual(sc["exact"][0], sc["token"][0])
+        self.assertEqual(sc["answer"][1], 1)            # one RESULT in TEXTS, answered INT<5>
+        self.assertGreater(sc["value"][1], 0)
 
 
 if __name__ == "__main__":

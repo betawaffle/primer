@@ -32,7 +32,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .batches import BINDERS, COMPUTED, N_VOCAB, REF
+from .batches import BINDERS, COMPUTED, N_VOCAB, REF, RESULT
 
 
 @dataclass
@@ -227,6 +227,41 @@ class Model(nn.Module):
             out["payload"] = torch.zeros((), device=h.device)
         out["loss"] = out["token"] + out["pointer"] + out["payload"]
         return out
+
+    @torch.no_grad()
+    def score(self, b):
+        """Counts (right, total) for evaluation, under teacher forcing:
+
+          token   the next token's kind (INT<6> for INT<5> counts as right)
+          pointer a REF's binder
+          value   a payload's value: the predicted vector's nearest neighbour,
+                  among every value of that kind in the batch, is the true one
+          exact   kind, binder and value all right: the honest per-token number
+          answer  value right where the token after RESULT carries one (INT<5>):
+                  the answer itself; answers that open with LAM or [ are
+                  left out, their first token is easy
+        """
+        h, allowed = self(b)
+        logits, ptr, pay = self.heads(h, b, allowed)
+        ids, seq, design = b["ids"], b["seq"], b["design"]
+        valid = (seq[:, 1:] == seq[:, :-1]) & (seq[:, 1:] >= 0) & b["loss"][:, 1:]
+        tgt, ref = ids[:, 1:], b["ref"][:, 1:]
+        kind = logits[:, :-1].argmax(-1) == tgt
+        has_ref = valid & (tgt == REF) & (ref >= 0)
+        point = ptr[:, :-1].argmax(-1) == ref
+        has_val = valid & torch.isin(tgt, self.computed.to(h.device)) & (design[:, 1:].abs().sum(-1) > 0)
+        value = torch.ones_like(kind)
+        if has_val.any():
+            truth, guess, which = design[:, 1:][has_val].float(), pay[:, :-1][has_val].float(), tgt[has_val]
+            sims = F.normalize(guess, dim=-1) @ F.normalize(truth, dim=-1).T
+            sims = sims.masked_fill(which[:, None] != which[None, :], -math.inf)
+            best = truth[sims.argmax(-1)]
+            value[has_val] = (best - truth).abs().amax(-1) < 1e-5
+        exact = kind & (point | ~has_ref) & value
+        answer = has_val & (ids[:, :-1] == RESULT)
+        pairs = {"token": (kind, valid), "pointer": (point, has_ref), "value": (value, has_val),
+                 "exact": (exact, valid), "answer": (exact, answer)}
+        return {k: (int((r & m).sum()), int(m.sum())) for k, (r, m) in pairs.items()}
 
     def describe(self):
         n = sum(p.numel() for p in self.parameters())

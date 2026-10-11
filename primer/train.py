@@ -28,18 +28,25 @@ def vocab_digest():
 
 
 def evaluate(model, batches, device, autocast, limit=50):
+    """Mean losses, and accuracies pooled over every position (see Model.score)."""
     model.eval()
-    tot, n = {}, 0
+    tot, n, counts = {}, 0, {}
     with torch.no_grad(), autocast():
         for i, b in enumerate(batches(epochs=1, shuffle=False)):
             if i == limit:
                 break
-            out = model.loss(to_torch(b, device))
-            for k, v in out.items():
-                tot[k] = tot.get(k, 0.0) + float(v)
+            b = to_torch(b, device)
+            for k, v in model.loss(b).items():
+                if not k.endswith("_acc"):
+                    tot[k] = tot.get(k, 0.0) + float(v)
+            for k, (r, m) in model.score(b).items():
+                a, z = counts.get(k, (0, 0))
+                counts[k] = (a + r, z + m)
             n += 1
     model.train()
-    return {k: v / max(n, 1) for k, v in tot.items()}
+    out = {k: v / max(n, 1) for k, v in tot.items()}
+    out.update({f"{k}_acc": r / max(m, 1) for k, (r, m) in counts.items()})
+    return out
 
 
 def fmt(d):

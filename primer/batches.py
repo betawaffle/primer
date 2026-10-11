@@ -36,6 +36,7 @@ from . import vsa
 BINDERS = {VOCAB[n].id for n in ("LAM", "LET", "NEW", "SLOT")}
 PAD = VOCAB["PAD"].id
 REF = VOCAB["REF"].id
+RESULT = VOCAB["RESULT"].id
 COMPUTED = {t.id for t in VOCAB.tokens if t.vsa == "computed"}
 N_VOCAB = max(VOCAB.by_id) + 1
 
