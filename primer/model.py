@@ -243,7 +243,7 @@ class Model(nn.Module):
                   the answer itself; answers that open with LAM or [ are
                   left out, their first token is easy
 
-        With the grammar's allowed tokens in the batch (primer/grammar.py), also:
+        With the grammar's allowed tokens in the batch (primer/recognizer.py), also:
 
           leak         probability on tokens the grammar rules out (a sum, so
                        its rate is the mean leaked mass): how confused the

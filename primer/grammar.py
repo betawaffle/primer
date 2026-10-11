@@ -5,9 +5,9 @@ allowed(prefix) tries every candidate token after the prefix and keeps those
 after which the sequence can still be completed. The parser is the checker's
 own (forms from vocab.toml, operator arities), run so that reading past the
 end means "more could come" instead of an error. This is brute force, about
-a hundred parses per position: fine for evaluation and for generating a few
-sequences, too slow for training-time masks. A step-at-a-time recognizer
-built from the same forms is the fast version, for later.
+a hundred parses per position. primer/recognizer.py is the fast version
+(one step per token, in the id form) for training masks and decoding; this
+one stays as the oracle its tests check it against.
 
 Only the grammar is checked: types are not (ADD STR<a> INT<1> is allowed),
 nor whether a name is in scope. A HOLE stands for any run of tokens, so
