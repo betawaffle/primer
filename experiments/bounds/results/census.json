@@ -1,0 +1,32 @@
+{
+ "positions": 78645,
+ "distinct_sets": 34,
+ "distinct_columns": 22,
+ "depth_hist": {
+  "0": 32100,
+  "1": 12941,
+  "2": 12676,
+  "3": 9559,
+  "4": 5988,
+  "5": 3224,
+  "6": 1398,
+  "7": 524,
+  "8": 170,
+  "9": 54,
+  "10": 9,
+  "11": 2
+ },
+ "max_depth_by_group": {
+  "syntax": 6,
+  "logic": 3,
+  "values": 2,
+  "compute": 9,
+  "teach": 11,
+  "quote": 9,
+  "edit": 10,
+  "episode": 5,
+  "think": 10,
+  "belief": 7,
+  "agenda": 10
+ }
+}
