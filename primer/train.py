@@ -6,13 +6,15 @@
 
 Uses the GPU when torch sees one (ROCm shows up as cuda) with bf16 autocast,
 else the CPU. Every --eval steps it reports losses and accuracies on the test
-split (held-out combinations, so test accuracy measures composition) and
+split (held-out combinations, so test accuracy measures composition), how
+much probability it leaks onto tokens the grammar rules out, and
 saves a checkpoint with the config and the vocabulary it was trained on.
 """
 import argparse
 import hashlib
 import json
 import math
+import multiprocessing as mp
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -20,6 +22,7 @@ from pathlib import Path
 import torch
 
 from .batches import Batches, Design, read_shards
+from .grammar import allowed_mask
 from .model import Config, Model, to_torch
 
 
@@ -45,7 +48,8 @@ def evaluate(model, batches, device, autocast, limit=50):
             n += 1
     model.train()
     out = {k: v / max(n, 1) for k, v in tot.items()}
-    out.update({f"{k}_acc": r / max(m, 1) for k, (r, m) in counts.items()})
+    out.update({f"{k}_{'rate' if k in ('leak', 'ungrammatical') else 'acc'}": r / max(m, 1)
+                for k, (r, m) in counts.items()})
     return out
 
 
@@ -65,6 +69,7 @@ def main(argv=None):
     ap.add_argument("--warmup", type=int, default=200)
     ap.add_argument("--eval", type=int, default=500, help="evaluate and checkpoint every N steps")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--no-grammar", action="store_true", help="skip the grammar-leak metrics (their masks are slow)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     for f, v in asdict(Config()).items():
         if isinstance(v, (int, float)) and f != "vocab":
@@ -75,7 +80,16 @@ def main(argv=None):
     c = Config(**{f: getattr(a, f) for f in asdict(Config()) if hasattr(a, f)})
     design = Design(c.d_design)
     train = Batches(read_shards(a.train), a.context, a.batch, design, a.seed)
-    test = Batches(read_shards(a.test), a.context, a.batch, design, a.seed + 1) if a.test else None
+    test = None
+    if a.test:
+        recs = read_shards(a.test)
+        if not a.no_grammar:
+            t0 = time.time()
+            with mp.Pool() as pool:
+                for r, m in zip(recs, pool.map(allowed_mask, [r["text"] for r in recs], chunksize=8)):
+                    r["allowed"] = m
+            print(f"grammar masks for {len(recs)} test sequences in {time.time() - t0:.0f}s")
+        test = Batches(recs, a.context, a.batch, design, a.seed + 1)
     model = Model(c, design.table).to(a.device)
     print(model.describe())
 

@@ -19,6 +19,8 @@ Each batch row is one context of T positions packed with whole sequences
             -1 elsewhere, and for a free variable inside a quote
   loss      False where training puts no loss on the token (OOPS-retracted
             values, and PAD)
+  allowed   only if every record has one (see primer/grammar.py): which
+            tokens the grammar allows at each position, for evaluation
 
 The targets are the next position's id, ref and design, within one sequence.
 """
@@ -140,6 +142,8 @@ def make_row(recs, T, design, rng, max_offset=1 << 20, time_dropout=0.2):
         "ref": np.full(T, -1, np.int64),
         "loss": np.zeros(T, bool),
     }
+    if all("allowed" in r for r in recs):
+        row["allowed"] = np.zeros((T, N_VOCAB), bool)
     at = 0
     for s, r in enumerate(recs):
         n = len(r["ids"])
@@ -154,6 +158,8 @@ def make_row(recs, T, design, rng, max_offset=1 << 20, time_dropout=0.2):
         for i, b in r["refs"]:
             row["ref"][at + i] = at + b
         row["loss"][sl] = True
+        if "allowed" in row:
+            row["allowed"][sl] = r["allowed"]
         for a, b in r.get("no_loss", ()):
             row["loss"][at + a:at + b] = False
         at += n

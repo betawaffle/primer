@@ -240,6 +240,14 @@ class Model(nn.Module):
           answer  value right where the token after RESULT carries one (INT<5>):
                   the answer itself; answers that open with LAM or [ are
                   left out, their first token is easy
+
+        With the grammar's allowed tokens in the batch (primer/grammar.py), also:
+
+          leak         probability on tokens the grammar rules out (a sum, so
+                       its rate is the mean leaked mass): how confused the
+                       model is about structure
+          ungrammatical  the top choice is ruled out
+          constrained  token kind right when choosing among allowed tokens only
         """
         h, allowed = self(b)
         logits, ptr, pay = self.heads(h, b, allowed)
@@ -261,7 +269,17 @@ class Model(nn.Module):
         answer = has_val & (ids[:, :-1] == RESULT)
         pairs = {"token": (kind, valid), "pointer": (point, has_ref), "value": (value, has_val),
                  "exact": (exact, valid), "answer": (exact, answer)}
-        return {k: (int((r & m).sum()), int(m.sum())) for k, (r, m) in pairs.items()}
+        out = {k: (int((r & m).sum()), int(m.sum())) for k, (r, m) in pairs.items()}
+        if "allowed" in b:
+            ok = b["allowed"][:, 1:]
+            lg = logits[:, :-1].float()
+            leak = 1 - (lg.softmax(-1) * ok).sum(-1)
+            top_ok = ok.gather(-1, lg.argmax(-1, keepdim=True))[..., 0]
+            constrained = lg.masked_fill(~ok, -math.inf).argmax(-1) == tgt
+            out["leak"] = (float((leak * valid).sum()), int(valid.sum()))
+            out["ungrammatical"] = (int((~top_ok & valid).sum()), int(valid.sum()))
+            out["constrained"] = (int((constrained & valid).sum()), int(valid.sum()))
+        return out
 
     def describe(self):
         n = sum(p.numel() for p in self.parameters())

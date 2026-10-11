@@ -135,6 +135,17 @@ class TestModel(unittest.TestCase):
         self.assertEqual(sc["answer"][1], 1)            # one RESULT in TEXTS, answered INT<5>
         self.assertGreater(sc["value"][1], 0)
 
+    def test_grammar_leak(self):
+        from primer.grammar import allowed_mask
+        rs = recs()
+        for r, t in zip(rs, TEXTS):
+            r["allowed"] = allowed_mask(t)
+        sc = self.m.score(to_torch(stack([row(rs)]), "cpu"))
+        n = sc["token"][1]
+        self.assertEqual(sc["leak"][1], n)
+        self.assertTrue(0 < sc["leak"][0] < n)          # an untrained model leaks some mass, not all
+        self.assertGreaterEqual(sc["constrained"][0], sc["token"][0] - sc["ungrammatical"][0])
+
 
 if __name__ == "__main__":
     unittest.main()
