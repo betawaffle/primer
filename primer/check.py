@@ -66,6 +66,13 @@ def parse_statements(toks, starts=None, links=None):
 
 
 # ---- comparing functions by testing them --------------------------------
+#
+# TODO(SAME/DIFF): testing on a fixed pool is not a proof. A DIFF whose only
+# telling input is off the pool is rejected (data lost), and a SAME between
+# functions that differ only off the pool passes (false training data).
+# Generators make SAME true by construction for now. Fix: have generators
+# record their evidence (the differing input for DIFF, the meaning-preserving
+# rewrite for SAME) and check that instead of searching the pool.
 
 _POOL1 = ([*range(-3, 13)] + [0.5, 2.5, -1.5] + [[], [1, 2, 3], [3, 1, 2], [0, 0], [5], [2, 2, 1]]
           + [True, False, "a", "b"])
