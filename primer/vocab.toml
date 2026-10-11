@@ -10,6 +10,9 @@
 #
 # args: argument types in order (their count is the arity). ret: result type.
 # vsa: what the fixed half of the embedding is (atom, ordered, computed, zero).
+# form: for a token that heads a statement, what follows it (DEF: "word expr
+# END"). This is the statement grammar; primer/forms.py says how to read it.
+# part: what the form is part of, if not a statement ("edit": inside PATCH).
 #
 # [[name]] rows are families of names the text form uses for bound things
 # (V0, NEW3, R12: any number). The model never sees the numbers: each name
@@ -605,6 +608,7 @@ id = 65
 name = "EVAL"
 group = "teach"
 vsa = "atom"
+form = "expr (RESULT expr)?"
 
 [[token]]
 id = 66
@@ -617,6 +621,7 @@ id = 67
 name = "DEF"
 group = "teach"
 vsa = "atom"
+form = "word expr END"
 
 [[token]]
 id = 68
@@ -631,12 +636,14 @@ id = 69
 name = "EXPAND"
 group = "teach"
 vsa = "atom"
+form = "word RESULT expr"
 
 [[token]]
 id = 70
 name = "EX"
 group = "teach"
 vsa = "atom"
+form = "expr IS|ISNOT word"
 
 [[token]]
 id = 71
@@ -655,12 +662,14 @@ id = 73
 name = "ASK"
 group = "teach"
 vsa = "atom"
+form = "expr word RESULT YES|NO"
 
 [[token]]
 id = 74
 name = "YES"
 group = "teach"
 vsa = "atom"
+form = ""
 note = "a verdict: the claim holds (ASK, a bet's draw, a submitted answer)"
 
 [[token]]
@@ -668,6 +677,7 @@ id = 75
 name = "NO"
 group = "teach"
 vsa = "atom"
+form = ""
 note = "a verdict: the claim does not hold"
 
 [[token]]
@@ -675,12 +685,14 @@ id = 76
 name = "SAME"
 group = "teach"
 vsa = "atom"
+form = "expr expr"
 
 [[token]]
 id = 77
 name = "DIFF"
 group = "teach"
 vsa = "atom"
+form = "expr expr"
 
 # ---- quote: expressions as data, and their parts of speech ------------------
 
@@ -759,6 +771,7 @@ id = 86
 name = "PATCH"
 group = "edit"
 vsa = "atom"
+form = "word ((AT expr)? edit)+ END"
 note = "PATCH word edit... END: change a defined word's definition in place"
 
 [[token]]
@@ -773,6 +786,8 @@ id = 88
 name = "REPLACE"
 group = "edit"
 vsa = "atom"
+form = "expr expr"
+part = "edit"
 note = "REPLACE old new: the subexpression old becomes new; old must occur once unless AT says which"
 
 [[token]]
@@ -780,6 +795,8 @@ id = 89
 name = "WRAP"
 group = "edit"
 vsa = "atom"
+form = "expr operator"
+part = "edit"
 note = "WRAP old OP args...: old becomes the first argument of OP"
 
 # ---- episode: goals, actions with a budget, and their outcomes --------------
@@ -789,24 +806,28 @@ id = 90
 name = "GOAL"
 group = "episode"
 vsa = "atom"
+form = "expr"
 
 [[token]]
 id = 91
 name = "BUDGET"
 group = "episode"
 vsa = "atom"
+form = "expr"
 
 [[token]]
 id = 92
 name = "ACT"
 group = "episode"
 vsa = "atom"
+form = "EVAL|DONE expr"
 
 [[token]]
 id = 93
 name = "OBS"
 group = "episode"
 vsa = "atom"
+form = "expr"
 
 [[token]]
 id = 94
@@ -820,6 +841,7 @@ id = 95
 name = "ERR"
 group = "episode"
 vsa = "atom"
+form = ""
 note = "the outcome of an action that failed (and the value of anything that fails)"
 
 # ---- think: thoughts before acting, withdrawing them, and what computing costs ----
@@ -829,6 +851,7 @@ id = 96
 name = "OOPS"
 group = "think"
 vsa = "atom"
+form = ""
 note = "right after EVAL e RESULT v: v was wrong; the thought is withdrawn (train with no loss on v)"
 
 [[token]]
@@ -836,6 +859,7 @@ id = 97
 name = "COST"
 group = "think"
 vsa = "atom"
+form = "expr STEPS expr"
 note = "COST e STEPS n: evaluating e takes n interpreter steps"
 
 [[token]]
@@ -862,6 +886,7 @@ id = 100
 name = "BET"
 group = "belief"
 vsa = "atom"
+form = "expr (expr expr)?"
 note = "BET p pred list: chance p that a draw from list passes pred; BET p ACT ...: chance the action succeeds (OBS for EVAL, YES for DONE)"
 
 [[token]]
@@ -869,6 +894,7 @@ id = 101
 name = "DRAW"
 group = "belief"
 vsa = "atom"
+form = "expr"
 note = "DRAW x: the item drawn for the open bet; followed by YES or NO"
 
 [[token]]
@@ -876,6 +902,7 @@ id = 102
 name = "SURPRISE"
 group = "belief"
 vsa = "atom"
+form = "expr"
 note = "SURPRISE s: -log2 of the probability the last bet gave to what happened, in bits"
 
 # ---- agenda: side ideas kept for later --------------------------------------
@@ -885,6 +912,7 @@ id = 103
 name = "QUEUE"
 group = "agenda"
 vsa = "atom"
+form = "GOAL? expr"
 note = "QUEUE GOAL pred | QUEUE fun: put a side idea on the agenda (a goal, or a candidate word) without leaving the current work"
 
 [[token]]
@@ -892,4 +920,5 @@ id = 104
 name = "NEXT"
 group = "agenda"
 vsa = "atom"
+form = ""
 note = "NEXT: start on the oldest agenda item; the next item must be its GOAL or a DEF of its word"

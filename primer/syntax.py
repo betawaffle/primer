@@ -161,6 +161,12 @@ class Parser:
             self.binders.pop()
 
 
+def starts_expr(name):
+    """Whether a token can begin an expression (what Parser.expr accepts first)."""
+    tok = VOCAB[name]
+    return bool(tok.ret or tok.args or tok.family) or name in ("HOLE", "[", "{")
+
+
 def parse_expr(text):
     p = Parser(tokenize(text))
     e = p.expr()

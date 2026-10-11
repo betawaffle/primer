@@ -20,7 +20,7 @@ DEEP_OPS = 8   # under 0.3% of ordinary generated sequences reach this
 
 def nodes(x):
     """Every AST node anywhere inside a statement (or any nesting of tuples and lists)."""
-    if isinstance(x, tuple) and x and x[0] in TAGS:
+    if isinstance(x, tuple) and x and isinstance(x[0], str) and x[0] in TAGS:
         yield x
     if isinstance(x, (tuple, list)):
         for y in x:
@@ -44,11 +44,11 @@ def _deep(stmts):
 
 
 def _bet_on_word(stmts):
-    return any(it[0] == "bet" and it[2] is not None and it[2][0] == "word" for it in stmts)
+    return any(it[0] == "bet" and it[2] is not None and it[2][0][0] == "word" for it in stmts)
 
 
 def _wrap_at(stmts):
-    return any(it[0] == "patch" and any(e[0] == "wrap" and e[1] is not None for e in it[2]) for it in stmts)
+    return any(it[0] == "patch" and any(at is not None and e[0] == "wrap" for at, e in it[2]) for it in stmts)
 
 
 RULES = {"fold_in_map": _fold_in_map, "deep": _deep, "bet_on_word": _bet_on_word, "wrap_at": _wrap_at}
