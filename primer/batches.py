@@ -3,11 +3,11 @@
 Each batch row is one context of T positions packed with whole sequences
 (never split), padded at the end. Per position:
 
-  ids       token id from vocab.toml (PAD after the last sequence)
+  ids       token id from vocab.toml (FILL after the last sequence)
   design    the fixed half of the input embedding: the token's VSA vector
             (an atom, or the payload's computed vector), projected to
             d_design dims by a fixed random matrix (see Design)
-  seq       which sequence of the row the position belongs to (-1 for PAD);
+  seq       which sequence of the row the position belongs to (-1 for fill);
             attention never crosses sequences
   pos       stable position: the sequence's start offset (random per
             sequence, as context.md decided) plus the index. RoPE uses
@@ -20,7 +20,7 @@ Each batch row is one context of T positions packed with whole sequences
             elsewhere, and for a free variable inside a quote (whose design
             is its de Bruijn index instead)
   loss      False where training puts no loss on the token (OOPS-retracted
-            values, and PAD)
+            values, and fill)
   allowed   only if every record has one (see primer/grammar.py): which
             tokens the grammar allows at each position, for evaluation
 
@@ -38,7 +38,7 @@ from .vocab import VOCAB
 from . import vsa
 
 BINDERS = {VOCAB[n].id for n in ("LAM", "LET", "NEW", "DEF", "SLOT")}
-PAD = VOCAB["PAD"].id
+FILL = VOCAB["EOS"].id   # stands in after a row's last sequence: seq -1, so never read, never scored
 REF = VOCAB["REF"].id
 RESULT = VOCAB["RESULT"].id
 COMPUTED = {t.id for t in VOCAB.tokens if t.vsa == "computed"}
@@ -139,7 +139,7 @@ def pack(recs, T):
 
 def make_row(recs, T, design, rng, max_offset=1 << 20, time_dropout=0.2):
     row = {
-        "ids": np.full(T, PAD, np.int64),
+        "ids": np.full(T, FILL, np.int64),
         "design": np.zeros((T, design.d), np.float32),
         "seq": np.full(T, -1, np.int64),
         "pos": np.zeros(T, np.int64),

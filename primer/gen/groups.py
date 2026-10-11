@@ -70,8 +70,7 @@ def gen_syntax(r):
         filler = toks[i]
         toks = toks[:i] + ["HOLE"] + toks[i + 1:]
         return f"BOS {' '.join(toks)} EOS {filler} END", None
-    pad = " PAD" * (r.randint(1, 4) if r.random() < 0.2 else 0)
-    return _seq(" ".join(toks)) + pad, None
+    return _seq(" ".join(toks)), None
 
 
 # ---- logic -----------------------------------------------------------
@@ -782,7 +781,7 @@ def gen_agenda(r):
 
 # ---- quote --------------------------------------------------------------------
 
-_NEVER_QUOTED = {"BOS", "EOS", "PAD", "HOLE"}   # would confuse sequence splitting or hole filling
+_NEVER_QUOTED = {"BOS", "EOS", "HOLE"}   # would confuse sequence splitting or hole filling
 
 
 def _quote_vs_use(r):

@@ -175,7 +175,7 @@ class TestCore(unittest.TestCase):
         ids = [t.id for t in VOCAB.tokens]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(sorted(ids), list(range(len(ids))))             # no gaps
-        pinned = {"BOS": 0, "EOS": 2, "REF": 29, "LAM": 30, "EVAL": 65, "CHANCE": 99}   # pins catch accidental renumbering
+        pinned = {"BOS": 0, "EOS": 2, "REF": 28, "LAM": 29, "EVAL": 64, "CHANCE": 98}   # pins catch accidental renumbering
         self.assertEqual({k: VOCAB[k].id for k in pinned}, pinned)
 
 

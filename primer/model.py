@@ -178,7 +178,7 @@ class Model(nn.Module):
         same = (seq[:, :, None] == seq[:, None, :]) & (seq[:, :, None] >= 0)
         causal = torch.ones_like(same[0]).tril()
         allowed = same & causal
-        allowed |= torch.eye(ids.shape[1], dtype=torch.bool, device=ids.device)   # PAD rows see themselves
+        allowed |= torch.eye(ids.shape[1], dtype=torch.bool, device=ids.device)   # fill rows see themselves
         mask = torch.zeros(allowed.shape, dtype=x.dtype, device=x.device).masked_fill(~allowed, -math.inf)[:, None]
         ref = b["ref"]
         edge = torch.zeros_like(allowed, dtype=x.dtype)

@@ -1,6 +1,6 @@
 """Checks a whole training sequence: parses its statements and verifies every claim.
 
-A sequence is BOS statement* EOS, optionally followed by PADs. If it contains a
+A sequence is BOS statement* EOS. If it contains a
 HOLE, the filler follows the EOS and ends with END (BOS ... HOLE ... EOS
 filler END): it is put in place of the HOLE and the completed sequence is
 checked. END otherwise only closes a variable-length body, as in PATCH.
@@ -110,11 +110,9 @@ def compare_functions(f, g, ctx):
 
 
 def fill_hole(toks):
-    """A sequence's tokens (BOS ... EOS, PADs dropped) with any HOLE replaced by
+    """A sequence's tokens (BOS ... EOS) with any HOLE replaced by
     its filler (BOS ... HOLE ... EOS filler END), and for each of them its
     position in toks."""
-    while toks and toks[-1].name == "PAD":
-        toks = toks[:-1]
     eos = [i for i, t in enumerate(toks) if t.name == "EOS"]
     if not toks or toks[0].name != "BOS" or len(eos) != 1:
         raise SyntaxErr("a sequence is BOS ... EOS")
@@ -122,7 +120,7 @@ def fill_hole(toks):
     holes = [i for i, t in enumerate(toks) if t.name == "HOLE"]
     if not holes:
         if e != len(toks) - 1:
-            raise SyntaxErr("nothing may follow EOS but PADs, or a HOLE's filler")
+            raise SyntaxErr("nothing may follow EOS but a HOLE's filler")
         return list(toks), list(range(len(toks)))
     if len(holes) > 1:
         raise SyntaxErr("only one HOLE per sequence")

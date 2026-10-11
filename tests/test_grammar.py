@@ -20,7 +20,7 @@ class TestGrammar(unittest.TestCase):
         after_def = names("BOS DEF<NEW0> LAM V0")                   # DEF binds its word and needs no END
         self.assertIn("EOS", after_def)
         self.assertNotIn("END", after_def)
-        self.assertEqual(names("BOS ADD INT<1> INT<2> INT<3> EOS"), {"PAD"})
+        self.assertEqual(names("BOS ADD INT<1> INT<2> INT<3> EOS"), set())    # a whole sequence: nothing follows
 
     def test_open(self):
         after_value = names("BOS INT<1>")
@@ -35,7 +35,7 @@ class TestGrammar(unittest.TestCase):
         self.assertIn("INT", names("BOS ADD HOLE INT<1> INT<2> EOS"))
         self.assertIn("END", names("BOS ADD HOLE INT<1> INT<2> EOS INT<1>"))
         self.assertNotIn("END", names("BOS ADD HOLE INT<1> INT<2> EOS ADD"))
-        self.assertEqual(names("BOS ADD HOLE INT<1> INT<2> EOS INT<1> END"), {"PAD"})
+        self.assertEqual(names("BOS ADD HOLE INT<1> INT<2> EOS INT<1> END"), set())
 
     def test_generated_tokens_are_allowed(self):
         """Every token of real data is one the grammar allows where it stands."""

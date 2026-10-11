@@ -71,7 +71,7 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 
 ## Sequences
 
-`BOS statement* EOS`, optionally followed by `PAD`s. `END` never ends a sequence; it only closes a body of variable length, as in `PATCH word edit… END`. Each statement starts with a head token whose `form` in `vocab.toml` gives the rest of its shape, so the checker, the printer and (later) constrained decoding read one grammar (`primer/forms.py`); a statement with no head is the implicit `expr value`. Statements:
+`BOS statement* EOS`. `END` never ends a sequence; it only closes a body of variable length, as in `PATCH word edit… END`. Each statement starts with a head token whose `form` in `vocab.toml` gives the rest of its shape, so the checker, the printer and (later) constrained decoding read one grammar (`primer/forms.py`); a statement with no head is the implicit `expr value`. Statements:
 
 | Statement | Claim checked |
 |---|---|

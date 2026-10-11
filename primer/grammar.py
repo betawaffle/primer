@@ -53,13 +53,8 @@ def _statements(body, closed):
 
 def viable(toks):
     """Whether some continuation makes these text tokens a whole sequence:
-    BOS statement* EOS, then a HOLE's filler and END if the body has a HOLE,
-    then any number of PADs."""
-    names = [t.name for t in toks]
-    if "PAD" in names:
-        k = names.index("PAD")
-        return all(n == "PAD" for n in names[k:]) and _whole(toks[:k])
-    return _prefix(toks, names)
+    BOS statement* EOS, then a HOLE's filler and END if the body has a HOLE."""
+    return _prefix(toks, [t.name for t in toks])
 
 
 def _prefix(toks, names, closed=False):

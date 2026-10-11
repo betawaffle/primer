@@ -3,7 +3,7 @@ import unittest
 
 import numpy as np
 
-from primer.batches import PAD, Design, make_row, pack, stack
+from primer.batches import FILL, Design, make_row, pack, stack
 from primer.check import retracted_spans
 from primer.serialize import to_ids
 from primer.vocab import VOCAB
@@ -42,7 +42,7 @@ class TestBatches(unittest.TestCase):
         r = row(rs)
         n = sum(len(x["ids"]) for x in rs)
         self.assertEqual(list(r["ids"][:len(rs[0]["ids"])]), rs[0]["ids"])
-        self.assertTrue((r["ids"][n:] == PAD).all() and (r["seq"][n:] == -1).all() and not r["loss"][n:].any())
+        self.assertTrue((r["ids"][n:] == FILL).all() and (r["seq"][n:] == -1).all() and not r["loss"][n:].any())
         # refs move with their sequence's place in the row and point at binders
         for i in np.nonzero(r["ref"] >= 0)[0]:
             self.assertEqual(r["ids"][i], VOCAB["REF"].id)

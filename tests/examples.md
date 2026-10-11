@@ -16,7 +16,7 @@ Companion to [SPEC.md](../SPEC.md). Hand-written samples showing what the genera
 
 ## syntax
 
-`BOS EOS END PAD [ ] { } HOLE`
+`BOS EOS END [ ] { } HOLE`
 
 There's nothing to bracket yet, so this group only teaches shape: balanced nesting, and infilling via `HOLE`.
 
@@ -28,9 +28,7 @@ BOS [ { } [ ] ] EOS
 BOS [ [ HOLE ] EOS ] END
 BOS [ { HOLE ] EOS } END
 BOS [ HOLE ] EOS [ ] END
-BOS [ ] EOS PAD PAD PAD PAD
 ```
-The last one is a short sequence padded to batch length. `PAD` is masked out of the loss and never predicted.
 
 ## logic
 
