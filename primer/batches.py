@@ -13,14 +13,22 @@ Each batch row is one context of T positions packed with whole sequences
             sequence, as context.md decided) plus the index. RoPE uses
             only differences, so the offset changes nothing but makes sure
             no head can learn absolute positions
-  time      event time in seconds, and time_known; shards have no times
-            column yet, so time is unknown everywhere for now
+  time      event time in seconds, and time_known: from the record's
+            "times" (sequences with actions, see primer/clock.py), dropped
+            for a whole sequence 20% of the time and for one event (the
+            tokens sharing a time) 5% of the time; unknown elsewhere
   ref       for a REF, the row index of its binder (LAM, LET, NEW, DEF or SLOT);
             for a DEF of a word already bound, that word's binder; -1
             elsewhere, and for a free variable inside a quote (whose design
             is its de Bruijn index instead)
   loss      False where training puts no loss on the token (OOPS-retracted
-            values, and fill)
+            values, the tokens after a gap-mode gap through the value that
+            replaced it, and fill)
+  evict     the last row index whose query may see this key (T: never
+            evicted). Mask mode: an evicted expression is visible up to the
+            end of the value that replaces it, then never again, which is
+            exactly deleting its KV rows at inference. Gap mode drops the
+            evicted tokens instead (see make_row and primer/collapse.py)
   allowed   only if every record has one (see primer/recognizer.py): which
             tokens the grammar allows at each position, for evaluation
 
@@ -137,7 +145,12 @@ def pack(recs, T):
         print(f"pack: dropped {dropped} sequences longer than {T}")
 
 
-def make_row(recs, T, design, rng, max_offset=1 << 20, time_dropout=0.2):
+def make_row(recs, T, design, rng, max_offset=1 << 20, time_dropout=0.2, event_dropout=0.05,
+             collapse=0.25, gap_mode=0.25):
+    """One packed row. Each collapsible span (see primer/collapse.py) is
+    evicted with probability collapse; a sequence with evictions is shown in
+    gap mode (evicted tokens removed, positions kept) with probability
+    gap_mode, else in mask mode (all tokens, with an eviction-time mask)."""
     row = {
         "ids": np.full(T, FILL, np.int64),
         "design": np.zeros((T, design.d), np.float32),
@@ -147,29 +160,67 @@ def make_row(recs, T, design, rng, max_offset=1 << 20, time_dropout=0.2):
         "time_known": np.zeros(T, bool),
         "ref": np.full(T, -1, np.int64),
         "loss": np.zeros(T, bool),
+        "evict": np.full(T, T, np.int64),
     }
     if all("allowed" in r for r in recs):
         row["allowed"] = np.zeros((T, N_VOCAB), bool)
     at = 0
     for s, r in enumerate(recs):
         n = len(r["ids"])
-        sl = slice(at, at + n)
-        row["ids"][sl] = r["ids"]
-        row["design"][sl] = design.sequence(r)
-        row["seq"][sl] = s
-        row["pos"][sl] = rng.integers(0, max_offset) + np.arange(n)
+        x = {
+            "ids": np.asarray(r["ids"], np.int64),
+            "design": design.sequence(r),
+            "pos": rng.integers(0, max_offset) + np.arange(n),
+            "time": np.zeros(n, np.float64),
+            "time_known": np.zeros(n, bool),
+            "ref": np.full(n, -1, np.int64),
+            "loss": np.ones(n, bool),
+            "evict": np.full(n, -1, np.int64),     # -1: never evicted, else the last position that sees it
+        }
         if "times" in r and rng.random() >= time_dropout:      # per-sequence dropout, as time.md asks
-            row["time"][sl] = r["times"]
-            row["time_known"][sl] = True
+            times = np.asarray(r["times"], np.float64)
+            events, which = np.unique(times, return_inverse=True)  # an event's tokens share its time
+            x["time"] = times
+            x["time_known"] = (rng.random(len(events)) >= event_dropout)[which]   # and per event
         for i, b in r["refs"]:
-            row["ref"][at + i] = at + b
-        row["loss"][sl] = True
-        if "allowed" in row:
-            row["allowed"][sl] = r["allowed"]
+            x["ref"][i] = b
         for a, b in r.get("no_loss", ()):
-            row["loss"][at + a:at + b] = False
+            x["loss"][a:b] = False
+        if "allowed" in row:
+            x["allowed"] = r["allowed"]
+        for a, b, last in r.get("collapse", ()):
+            if rng.random() < collapse:
+                x["evict"][a:b] = last
+        if (x["evict"] >= 0).any() and rng.random() < gap_mode:
+            x = _gap(x)
+        n = len(x["ids"])
+        sl = slice(at, at + n)
+        for k in ("ids", "design", "pos", "time", "time_known", "loss") + (("allowed",) if "allowed" in row else ()):
+            row[k][sl] = x[k]
+        row["seq"][sl] = s
+        row["ref"][sl] = np.where(x["ref"] >= 0, x["ref"] + at, -1)
+        row["evict"][sl] = np.where(x["evict"] >= 0, x["evict"] + at, T)
         at += n
     return row
+
+
+def _gap(x):
+    """Gap mode: drop the evicted tokens, as if the sequence had always been
+    read without them, keeping every survivor's position. No loss on the
+    tokens from the gap through the end of the value that replaced it: the
+    first follows a stranger, and the value was written while its
+    expression was still in view, so without it the value would be a guess.
+    Training on those would teach the model to make answers up."""
+    keep = x["evict"] < 0
+    new = np.cumsum(keep) - 1                      # old index -> new index, for survivors
+    loss = x["loss"].copy()                        # loss[i]: whether token i is scored as a target
+    for a in np.flatnonzero(~keep & np.append(True, keep[:-1])):
+        loss[a:x["evict"][a] + 1] = False
+    out = {k: v[keep] for k, v in x.items()}
+    out["loss"] = loss[keep]
+    out["ref"] = np.where(out["ref"] >= 0, new[np.maximum(out["ref"], 0)], -1)   # binders are never evicted (pinned)
+    out["evict"] = np.full(keep.sum(), -1, np.int64)
+    return out
 
 
 class Batches:
