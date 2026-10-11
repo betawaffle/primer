@@ -58,7 +58,15 @@ class TestBatches(unittest.TestCase):
         ints = r["design"][r["ids"] == VOCAB["INT"].id]
         self.assertTrue(np.allclose(np.sqrt((ints ** 2).mean(-1)), 1, atol=1e-4))
         self.assertTrue(np.allclose(DESIGN.vector(VOCAB["INT"].id, "5"), DESIGN.vector(VOCAB["INT"].id, "5")))
-        self.assertFalse((r["design"][r["ids"] == VOCAB["REF"].id] != 0).any())
+        self.assertFalse((r["design"][r["ids"] == VOCAB["REF"].id] != 0).any())   # bound REFs: the edge says it all
+
+    def test_free_variables_carry_their_index(self):
+        r = row([to_ids("BOS EVAL QUOTE MUL V0 V1 RESULT QUOTE MUL V0 V1 EOS")])
+        d = r["design"]
+        self.assertTrue((d[4] != 0).any() and (d[5] != 0).any())
+        self.assertFalse(np.allclose(d[4], d[5]))                         # V0 and V1 differ
+        self.assertTrue(np.allclose(d[4], d[9]) and np.allclose(d[5], d[10]))
+        self.assertFalse(np.allclose(d[4], DESIGN.vector(VOCAB["INT"].id, "0")))   # V0 is not INT<0>
 
     def test_pack(self):
         rows = list(pack(recs() * 10, 64))
@@ -134,6 +142,15 @@ class TestModel(unittest.TestCase):
         self.assertLessEqual(sc["exact"][0], sc["token"][0])
         self.assertEqual(sc["answer"][1], 1)            # one RESULT in TEXTS, answered INT<5>
         self.assertGreater(sc["value"][1], 0)
+
+    def test_redef_is_a_pointer_target(self):
+        """A DEF whose word is already bound (here its DEF is hidden by a HOLE) is
+        scored and trained like a REF: the pointer head must find the word."""
+        rec = to_ids("BOS HOLE EVAL APP NEW2 INT<7> RESULT INT<49> EOS DEF<NEW2> LAM MUL V0 V0 END")
+        self.assertIn((9, 4), rec["refs"])
+        b = to_torch(stack([row([rec])]), "cpu")
+        self.assertEqual(self.m.score(b)["pointer"][1], 3)                 # the DEF and two V0s
+        self.assertGreater(float(self.m.loss(b)["pointer"]), 0)
 
     def test_grammar_leak(self):
         from primer.grammar import allowed_mask

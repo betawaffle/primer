@@ -16,7 +16,9 @@ Each batch row is one context of T positions packed with whole sequences
   time      event time in seconds, and time_known; shards have no times
             column yet, so time is unknown everywhere for now
   ref       for a REF, the row index of its binder (LAM, LET, NEW, DEF or SLOT);
-            -1 elsewhere, and for a free variable inside a quote
+            for a DEF of a word already bound, that word's binder; -1
+            elsewhere, and for a free variable inside a quote (whose design
+            is its de Bruijn index instead)
   loss      False where training puts no loss on the token (OOPS-retracted
             values, and PAD)
   allowed   only if every record has one (see primer/grammar.py): which
@@ -40,6 +42,7 @@ PAD = VOCAB["PAD"].id
 REF = VOCAB["REF"].id
 RESULT = VOCAB["RESULT"].id
 COMPUTED = {t.id for t in VOCAB.tokens if t.vsa == "computed"}
+VALUED = COMPUTED | {REF}   # tokens whose payload sets the designed half (a REF's only when free)
 N_VOCAB = max(VOCAB.by_id) + 1
 
 
@@ -67,7 +70,8 @@ class Design:
     def token(self, i):
         """Designed half of token i's own row (input for a bare token, output
         for scoring it). Computed tokens and REF get zeros here: their
-        designed half is per position, from the payload."""
+        designed half is per position, from the payload (a bound REF has none
+        and stays zero; the attention edge to its binder carries its meaning)."""
         t = VOCAB.by_id.get(i)
         if t is None or t.vsa != "atom":
             return np.zeros(self.d, np.float32)
@@ -78,7 +82,9 @@ class Design:
         if name == "SLOT":
             kind, _, payload = payload.strip().partition(" ")
             name = kind
-        if name == "REF" or name not in ("NUM", "INT", "STR", "TIME", "REC"):
+        if name == "REF":     # a free variable inside a quote: its de Bruijn index, as a variable
+            return self.project(vsa.bind(vsa.atom("FREE"), vsa.enc_int(int(payload))))
+        if name not in ("NUM", "INT", "STR", "TIME", "REC"):
             return np.zeros(self.d, np.float32)
         return self.project(vsa.encode(parse_payload(name, payload)))
 

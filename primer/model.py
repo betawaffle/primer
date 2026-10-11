@@ -18,8 +18,9 @@ What it takes from the design threads (docs/decisions.md):
   open. Mixing is exact: q and k carry [sqrt(g)·rot(x), sqrt(1-g)·x], so
   q·k = g·(rotated score) + (1-g)·(plain score), and depends on positions
   only through their difference.
-- Payload values (NUM, INT, STR, TIME, REC, SLOT) are predicted as their
-  designed vector by a regression head. Exact decoding (dec_int, dec_num)
+- Payload values (NUM, INT, STR, TIME, REC, SLOT, and the index of a free
+  variable inside a quote) are predicted as their designed vector by a
+  regression head. Exact decoding (dec_int, dec_num)
   needs the full VSA vector and is later work.
 
 Not here yet: eviction masks (gap and mask mode), a times column in shards,
@@ -32,7 +33,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .batches import BINDERS, COMPUTED, N_VOCAB, REF, RESULT
+from .batches import BINDERS, N_VOCAB, RESULT, VALUED
 
 
 @dataclass
@@ -162,7 +163,7 @@ class Model(nn.Module):
             nn.init.normal_(b.attn.out.weight, std=0.02 / math.sqrt(2 * c.layers))
             nn.init.normal_(b.mlp.down.weight, std=0.02 / math.sqrt(2 * c.layers))
         self.binders = torch.tensor(sorted(BINDERS))
-        self.computed = torch.tensor(sorted(COMPUTED))
+        self.valued = torch.tensor(sorted(VALUED))
 
     def rows(self):
         """The tied table: every token's learned half ‖ designed half."""
@@ -200,8 +201,9 @@ class Model(nn.Module):
         return logits, ptr, self.payload(h)
 
     def loss(self, b):
-        """Next-token loss, plus pointer loss where the next token is a REF with a
-        binder, plus payload loss (1 - cosine) where it is a computed token."""
+        """Next-token loss, plus pointer loss where the next token points back (a
+        REF with a binder, or a DEF of a word already bound), plus payload loss
+        (1 - cosine) where it carries a payload (a value, or a free variable's index)."""
         h, allowed = self(b)
         logits, ptr, pay = self.heads(h, b, allowed)
         ids, seq = b["ids"], b["seq"]
@@ -212,7 +214,7 @@ class Model(nn.Module):
         out["token"] = (ce * valid).sum() / valid.sum().clamp(min=1)
         out["token_acc"] = ((logits[:, :-1].argmax(-1) == tgt) & valid).sum() / valid.sum().clamp(min=1)
 
-        pv = valid & (tgt == REF) & (b["ref"][:, 1:] >= 0)
+        pv = valid & (b["ref"][:, 1:] >= 0)
         if pv.any():
             p, t = ptr[:, :-1][pv], b["ref"][:, 1:][pv]
             out["pointer"] = F.cross_entropy(p, t)
@@ -220,7 +222,7 @@ class Model(nn.Module):
         else:
             out["pointer"] = out["pointer_acc"] = torch.zeros((), device=h.device)
 
-        cv = valid & torch.isin(tgt, self.computed.to(h.device)) & (b["design"][:, 1:].abs().sum(-1) > 0)
+        cv = valid & torch.isin(tgt, self.valued.to(h.device)) & (b["design"][:, 1:].abs().sum(-1) > 0)
         if cv.any():
             out["payload"] = (1 - F.cosine_similarity(pay[:, :-1][cv], b["design"][:, 1:][cv], dim=-1)).mean()
         else:
@@ -233,7 +235,7 @@ class Model(nn.Module):
         """Counts (right, total) for evaluation, under teacher forcing:
 
           token   the next token's kind (INT<6> for INT<5> counts as right)
-          pointer a REF's binder
+          pointer a REF's binder (or the word a re-DEF points at)
           value   a payload's value: the predicted vector's nearest neighbour,
                   among every value of that kind in the batch, is the true one
           exact   kind, binder and value all right: the honest per-token number
@@ -255,9 +257,9 @@ class Model(nn.Module):
         valid = (seq[:, 1:] == seq[:, :-1]) & (seq[:, 1:] >= 0) & b["loss"][:, 1:]
         tgt, ref = ids[:, 1:], b["ref"][:, 1:]
         kind = logits[:, :-1].argmax(-1) == tgt
-        has_ref = valid & (tgt == REF) & (ref >= 0)
+        has_ref = valid & (ref >= 0)
         point = ptr[:, :-1].argmax(-1) == ref
-        has_val = valid & torch.isin(tgt, self.computed.to(h.device)) & (design[:, 1:].abs().sum(-1) > 0)
+        has_val = valid & torch.isin(tgt, self.valued.to(h.device)) & (design[:, 1:].abs().sum(-1) > 0)
         value = torch.ones_like(kind)
         if has_val.any():
             truth, guess, which = design[:, 1:][has_val].float(), pay[:, :-1][has_val].float(), tgt[has_val]

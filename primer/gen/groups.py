@@ -277,6 +277,8 @@ def _teach_define(r, words):
         if r.random() < 0.5:
             parts.append(f"EXPAND {name} RESULT {unparse(body)}")
         defined.append(name)
+    if r.random() < 0.1:    # the first DEF hidden by a HOLE: its word is bound at its first use, the DEF points back
+        return " ".join(["BOS", "HOLE", *parts[1:], "EOS", parts[0], "END"]), None
     return _seq(*parts), None
 
 
