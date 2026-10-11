@@ -3,7 +3,9 @@
     python3 -m primer.gen --groups syntax-episode,belief --count 100000 --out data/ --workers 16
 
 Each line: {"group", "text", "truth", "encoder", "ids", "payloads"}, plus
-"heldout" (the rules it matches) in the test split. --split train (the
+"heldout" (the rules it matches) in the test split, "no_loss" for sequences
+with OOPS, and "times" (seconds, one per token) for sequences with actions,
+from the simulated clock in primer/clock.py. --split train (the
 default) leaves out every sequence matching a held-out rule; --split test
 writes only such sequences (see primer/split.py). Repeats are removed across
 all shards of a run, and the run tops itself up to --count. Every
@@ -21,6 +23,7 @@ import time
 from pathlib import Path
 
 from ..check import check, retracted_spans
+from ..clock import event_times
 from ..serialize import digest, to_ids
 from ..split import RULES, heldout
 from .groups import GROUPS, generate
@@ -49,6 +52,7 @@ def parse_groups(spec):
 def _work(args):
     shard, seed, n, groups, weights, do_check, out, split = args
     r = random.Random(seed)
+    clock = random.Random(f"clock {seed}")   # its own stream, so times don't change what is generated
     stats = {"written": 0, "rejected": 0, "duplicates": 0, "held out": 0}
     seen, order = set(), []
     path = Path(out) / f"shard-{shard:05d}.jsonl"
@@ -70,11 +74,15 @@ def _work(args):
             if h in seen:
                 stats["duplicates"] += 1
                 continue
+            rep = None
             if do_check:
                 rep = check(text, truth=truth)
                 if rep.errors or rep.unverified:
                     stats["rejected"] += 1
                     continue
+            times = event_times(text, clock, rep)
+            if times is not None:
+                extra["times"] = times
             if "OOPS" in text:
                 extra["no_loss"] = retracted_spans(text)
             seen.add(h)

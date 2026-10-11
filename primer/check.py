@@ -44,6 +44,8 @@ class Report:
     unverified: list = field(default_factory=list)
     statements: int = 0
     scores: list = field(default_factory=list)   # one {p, outcome, bits} per settled bet
+    actions: list = field(default_factory=list)  # one (position, steps) per action outcome, for the clock
+    where: list = field(default_factory=list)    # text position of each position after filling a HOLE
 
     @property
     def ok(self):
@@ -219,6 +221,7 @@ def check(text, truth=None, bets="exact", agenda=()):
         rep.errors.append(f"syntax: {e}")
         return rep
     rep.statements = len(stmts)
+    rep.where = info["where"]
 
     ctx = Context()
     ctx.tokens = info["tokens"]
@@ -436,12 +439,14 @@ def check(text, truth=None, bets="exact", agenda=()):
                 ep["budget"] -= 1
             v = value_of(it[2])
             if it[1] == "EVAL":
-                ep["pending"] = ("eval", v)
+                ep["pending"] = ("eval", v, steps(it[2], ctx)[1])
             else:
                 ok = ep["goal"] is not None and v is not ERR and _call(ep["goal"], (v,), ctx) is True
-                ep["pending"] = ("done", ok)
+                ep["pending"] = ("done", ok, 0)
         elif tag == "obs":
             pend, ep["pending"] = ep["pending"], None
+            if pend:
+                rep.actions.append((info["starts"][idx], pend[2]))
             want = value_of(it[1])
             if not pend or pend[0] != "eval":
                 err(f"{where}: OBS without ACT EVAL")
@@ -453,6 +458,8 @@ def check(text, truth=None, bets="exact", agenda=()):
                 settle(True)
         elif tag == "err":
             pend, ep["pending"] = ep["pending"], None
+            if pend:
+                rep.actions.append((info["starts"][idx], pend[2]))
             if not pend or pend[0] != "eval":
                 err(f"{where}: ERR follows ACT EVAL (a DONE answer is followed by YES or NO)")
             elif pend[1] is not ERR:
@@ -495,6 +502,7 @@ def check(text, truth=None, bets="exact", agenda=()):
             b["drawn"], b["truth"] = True, _call(b["f"], (x,), ctx)
         elif tag in ("yes", "no") and ep["pending"] and ep["pending"][0] == "done":
             pend, ep["pending"] = ep["pending"], None
+            rep.actions.append((info["starts"][idx], pend[2]))
             if pend[1] != (tag == "yes"):
                 err(f"{where}: DONE answer {'satisfies' if pend[1] else 'does not satisfy'} the goal")
             if action_bet():

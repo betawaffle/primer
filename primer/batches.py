@@ -13,8 +13,9 @@ Each batch row is one context of T positions packed with whole sequences
             sequence, as context.md decided) plus the index. RoPE uses
             only differences, so the offset changes nothing but makes sure
             no head can learn absolute positions
-  time      event time in seconds, and time_known; shards have no times
-            column yet, so time is unknown everywhere for now
+  time      event time in seconds, and time_known: from the record's
+            "times" (sequences with actions, see primer/clock.py), dropped
+            for a whole sequence 20% of the time; unknown elsewhere
   ref       for a REF, the row index of its binder (LAM, LET, NEW, DEF or SLOT);
             for a DEF of a word already bound, that word's binder; -1
             elsewhere, and for a free variable inside a quote (whose design

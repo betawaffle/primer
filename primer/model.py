@@ -23,8 +23,8 @@ What it takes from the design threads (docs/decisions.md):
   regression head. Exact decoding (dec_int, dec_num)
   needs the full VSA vector and is later work.
 
-Not here yet: eviction masks (gap and mask mode), a times column in shards,
-constrained decoding, local-window heads.
+Not here yet: eviction masks (gap and mask mode), constrained decoding,
+local-window heads.
 """
 import math
 from dataclasses import asdict, dataclass
