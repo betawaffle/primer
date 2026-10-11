@@ -28,9 +28,9 @@ def _eval(node, ctx=None):
     return v
 
 
-def _item(node, ctx=None):
+def _statement(node, ctx=None):
     """'expr value' text for an expression that reduces. Pass the same ctx to
-    every item of a sequence so CLEAN sees what the checker will see."""
+    every statement of a sequence so CLEAN sees what the checker will see."""
     if is_literal(node):
         raise Retry
     ctx = ctx or Context(fuel=20_000)
@@ -40,11 +40,11 @@ def _item(node, ctx=None):
     return f"{unparse(node)} {show(v)}"
 
 
-def _seq(*items):
-    return " ".join(["BOS", *items, "EOS"])
+def _seq(*stmts):
+    return " ".join(["BOS", *stmts, "EOS"])
 
 
-def _hole_item(r, node, value_text, prefix=""):
+def _hole_statement(r, node, value_text, prefix=""):
     """Replace one random subexpression with HOLE; the original is the filler."""
     spots = [(p, n) for p, n in subtrees(node) if p and n[0] not in ("var",)]
     if not spots:
@@ -89,10 +89,10 @@ def gen_logic(r):
     if is_literal(node):
         raise Retry
     if r.random() < 0.25:
-        return _hole_item(r, node, show(_eval(node))), None
-    items = [_item(node)] + [_item(n) for n in (_bool_expr(r, 2) for _ in range(r.randint(0, 2)))
+        return _hole_statement(r, node, show(_eval(node))), None
+    stmts = [_statement(node)] + [_statement(n) for n in (_bool_expr(r, 2) for _ in range(r.randint(0, 2)))
                              if not is_literal(n)]
-    return _seq(*items), None
+    return _seq(*stmts), None
 
 
 # ---- values ------------------------------------------------------------
@@ -136,7 +136,7 @@ def _rec_pair(r):
 
 
 def gen_values(r):
-    items = []
+    stmts = []
     for _ in range(r.randint(1, 3)):
         roll = r.random()
         if roll < 0.15:
@@ -159,11 +159,11 @@ def gen_values(r):
             node = op(r.choice(ops), lit(a), lit(b))
             if r.random() < 0.15:
                 node = op(r.choice(["AND", "OR"]), node, op("LT", lit(r.randint(0, 9)), lit(r.randint(0, 9))))
-        items.append(_item(node))
-    if len(items) == 1 and r.random() < 0.2:
+        stmts.append(_statement(node))
+    if len(stmts) == 1 and r.random() < 0.2:
         node = op("LT", lit(_value(r, "INT")), ("hole",))
         return f"BOS {unparse(node)} TRUE EOS {show(node[2][0][1] + r.randint(1, 9))} END", None
-    return _seq(*items), None
+    return _seq(*stmts), None
 
 
 # ---- compute -------------------------------------------------------------
@@ -183,15 +183,15 @@ def _vsa_item(r, ctx):
             b = op("BIND", lit(k), lit(rec[k]))
             bundle = b if bundle is None else op("BUNDLE", bundle, b)
         other = dict(rec) if r.random() < 0.6 else {**rec, keys[0]: rec[keys[0]] + 1}
-        return _item(op("EQ", bundle, lit(other)), ctx)
+        return _statement(op("EQ", bundle, lit(other)), ctx)
     if roll < 0.6:
-        return _item(op("CLEAN", op("UNBIND", lit(rec), lit(r.choice(keys)))), ctx)
+        return _statement(op("CLEAN", op("UNBIND", lit(rec), lit(r.choice(keys)))), ctx)
     if roll < 0.8:
         a, b = rand_str(r), rand_str(r)
-        return _item(op("CLEAN", op("UNBIND", op("BIND", lit(a), lit(b)), lit(a))), ctx)
+        return _statement(op("CLEAN", op("UNBIND", op("BIND", lit(a), lit(b)), lit(a))), ctx)
     x = rand_num(r)
     y = x * r.choice([1.02, 1.5, 4, 100])
-    return _item(op("GT", op("SIM", lit(x), lit(y)), lit(r.choice([0.1, 0.5, 0.9]))), ctx)
+    return _statement(op("GT", op("SIM", lit(x), lit(y)), lit(r.choice([0.1, 0.5, 0.9]))), ctx)
 
 
 def gen_compute(r):
@@ -200,8 +200,8 @@ def gen_compute(r):
         return _seq(*[_vsa_item(r, ctx) for _ in range(r.randint(1, 2))]), None
     node = _program(r)
     if r.random() < 0.25:
-        return _hole_item(r, node, show(_eval(node))), None
-    return _seq(_item(node), *[_item(_program(r, depth=2)) for _ in range(r.randint(0, 1))]), None
+        return _hole_statement(r, node, show(_eval(node))), None
+    return _seq(_statement(node), *[_statement(_program(r, depth=2)) for _ in range(r.randint(0, 1))]), None
 
 
 # ---- teach -----------------------------------------------------------------
@@ -256,7 +256,7 @@ def _predicate(r):
 def _teach_eval(r, words):
     node = _program(r, depth=r.randint(1, 3))
     if r.random() < 0.2:
-        return _hole_item(r, node, f"RESULT {show(_eval(node))}", prefix="EVAL "), None
+        return _hole_statement(r, node, f"RESULT {show(_eval(node))}", prefix="EVAL "), None
     return _seq(f"EVAL {unparse(node)} RESULT {show(_eval(node))}"), None
 
 
@@ -366,9 +366,9 @@ def _teach_ask_defined(r, words):
 
 
 def gen_teach(r):
-    item = r.choices([_teach_eval, _teach_define, _teach_examples, _teach_relation, _teach_ask_defined],
+    statement = r.choices([_teach_eval, _teach_define, _teach_examples, _teach_relation, _teach_ask_defined],
                       [2, 3, 3, 2, 1])[0]
-    return item(r, ())
+    return statement(r, ())
 
 
 # ---- episode -----------------------------------------------------------------
@@ -467,12 +467,12 @@ def gen_belief(r, bet_on_word=None):
     and how surprising the outcome was."""
     roll = r.random()
     if roll < 0.3 and not bet_on_word:
-        items = []
+        stmts = []
         for _ in range(r.randint(1, 2)):
             pred, xs = _int_pred(r), _draw_list(r)
             _chance(r, pred, xs)
-            items.append(_item(op("CHANCE", pred, xs)))
-        return _seq(*items), None
+            stmts.append(_statement(op("CHANCE", pred, xs)))
+        return _seq(*stmts), None
 
     ctx = Context(fuel=20_000)
     pred, parts = _int_pred(r), []
@@ -684,14 +684,14 @@ def _think_then_act(r):
 
 def _costs(r):
     ctx = Context(fuel=20_000)
-    items = []
+    stmts = []
     for _ in range(r.randint(1, 3)):
         node = _program(r, depth=r.randint(1, 4))
         v, used = steps(node, ctx)
         if v is ERR or is_literal(node):
             raise Retry
-        items.append(f"COST {unparse(node)} STEPS INT<{used}>")
-    return _seq(*items), None
+        stmts.append(f"COST {unparse(node)} STEPS INT<{used}>")
+    return _seq(*stmts), None
 
 
 def gen_think(r):
@@ -789,13 +789,13 @@ def _quote_vs_use(r):
     ctx = Context(fuel=20_000)
     node = _program(r, ty=r.choice(["INT", "INT", "LINT", "BOOL"]), depth=r.randint(1, 3))
     v = _eval(node, ctx)
-    parts = [_item(node, ctx)]
+    parts = [_statement(node, ctx)]
     same = lit(v) if not isinstance(v, list) else ("list", [lit(x) for x in v])
     picks = [op("EQ", node, same),
              op("EQ", ("lit", Quote(unparse(node), True)), ("lit", Quote(unparse(same), True))),
              op("EQ", ("lit", Quote(unparse(node), True)), ("lit", Quote(unparse(node), True)))]
     for e in r.sample(picks, r.randint(1, 3)):
-        parts.append(_item(e, ctx))
+        parts.append(_statement(e, ctx))
     return _seq(*parts), None
 
 
@@ -817,13 +817,13 @@ def _kinds(r):
             x = domain()
             parts.append(f"EX {unparse(x)} {'IS' if apply(pred, evaluate(x, ctx), ctx) is True else 'ISNOT'} {word}")
             ctx.words[word] = Ostensive(word, [], [])
-        parts.append(_item(op("KIND", ("lit", quote(word))), ctx))
+        parts.append(_statement(op("KIND", ("lit", quote(word))), ctx))
     for _ in range(r.randint(1, 3)):
         if r.random() < 0.6:
             q = quote(r.choice(ops) if r.random() < 0.6 else r.choice(names))
         else:
             q = Quote(unparse(_program(r, depth=r.randint(1, 2))), True)
-        parts.append(_item(op("KIND", ("lit", q)), ctx))
+        parts.append(_statement(op("KIND", ("lit", q)), ctx))
     return _seq(*parts), None
 
 
@@ -834,8 +834,8 @@ def _spans(r):
     parts, exprs = [], []
     for _ in range(r.randint(1, 2)):
         node = _program(r, depth=r.randint(1, 3))
-        start = len(tokenize(_seq(*parts))) - 1      # where this item begins (before the final EOS)
-        parts.append(_item(node, ctx))
+        start = len(tokenize(_seq(*parts))) - 1      # where this statement begins (before the final EOS)
+        parts.append(_statement(node, ctx))
         exprs.append((start, node))
     start, node = r.choice(exprs)
     path, sub = r.choice(list(subtrees(node)))
@@ -848,7 +848,7 @@ def _spans(r):
     ctx.before = len(ctx.tokens)
     span = op("SPAN", lit(a), lit(b))
     for e in r.sample([span, op("KIND", span), op("EQ", span, ("lit", quote(unparse(sub))))], r.randint(1, 2)):
-        parts.append(_item(e, ctx))
+        parts.append(_statement(e, ctx))
         ctx.tokens = [str(t) for t in tokenize(_seq(*parts))][:-1]
         ctx.before = len(ctx.tokens)
     return _seq(*parts), None
@@ -866,7 +866,7 @@ def _parts(r):
     picks = [op("APP", f, lit(r.randint(-3, 9))), op("MAP", f, xs)]
     if VOCAB[name].ret == "BOOL":
         picks.append(op("FILTER", f, xs))
-    parts = [_item(e, ctx) for e in r.sample(picks, r.randint(1, 2))]
+    parts = [_statement(e, ctx) for e in r.sample(picks, r.randint(1, 2))]
     if r.random() < 0.6:
         parts.append(f"SAME {unparse(f)} LAM {name} INT<{x}> V0")
     if name in ("SUB", "LT", "GT") and r.random() < 0.5:   # argument order matters

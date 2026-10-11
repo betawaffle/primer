@@ -64,16 +64,16 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 
 - **Position**: a token's index in its sequence, counting `BOS` as 0 (training will add a random start offset). Never renumbered, even after eviction; `SPAN` addresses it.
 - **Form**: the shape of a multi-token construct, such as `DEF word expr END` or `BET p pred list`.
-- **Item**: one instance of a form in a sequence: one claim, or one step such as `ACT EVAL e OBS v`.
+- **Statement**: one instance of a form in a sequence: one claim, one definition, or one step such as `ACT EVAL e OBS v`. Statements are made of expressions; a sequence is made of statements.
 - **Episode**: one goal pursued to its outcome: `GOAL`, actions, then `ACT DONE x` answered `YES` or `NO` (or the budget runs out). A sequence can hold several; `NEXT` starts the next.
 - **Sequence**: `BOS … EOS`. One numbering of positions, one scope for defined words, slots and the agenda. A teaching row is a short sequence; a live agent run is one long one.
 - **Context**: the part of the current sequence the model can see now. It never spans two sequences; only the store carries over between them.
 
 ## Sequences
 
-`BOS item* EOS`, optionally followed by `PAD`s. `END` never ends a sequence; it only closes a form's body, as in `DEF word expr END`. Items:
+`BOS statement* EOS`, optionally followed by `PAD`s. `END` never ends a sequence; it only closes a form's body, as in `DEF word expr END`. Statements:
 
-| Item | Claim checked |
+| Statement | Claim checked |
 |---|---|
 | `expr value` | expr evaluates to value (types must match). If expr is already a value, nothing follows it. |
 | `EVAL expr RESULT value` | the same, made explicit |
@@ -85,11 +85,11 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 | `GOAL pred`, `BUDGET n`, `ACT EVAL expr`, `OBS value`, `ERR`, `ACT DONE x`, `YES` / `NO` | an episode: each action costs one budget; `EVAL` is followed by `OBS` its value (or `ERR` if it failed); `DONE x` by `YES` if `pred x` holds, else `NO` |
 | `BET p pred list`, `DRAW x`, `YES` / `NO` | a bet that a uniform draw from list passes pred, with probability p (exactly `CHANCE pred list`); the draw, which must be in the list; whether it passed |
 | `BET p` before an `ACT` | a bet that the action succeeds (`OBS` for `EVAL`, `YES` for `DONE`); see Beliefs |
-| `PATCH word edit… END` | changes a defined word's definition in place (see Edits); later items use the new definition |
-| `EVAL expr RESULT v OOPS` | a withdrawn thought: v must be wrong; the item is otherwise ignored |
+| `PATCH word edit… END` | changes a defined word's definition in place (see Edits); later statements use the new definition |
+| `EVAL expr RESULT v OOPS` | a withdrawn thought: v must be wrong; the statement is otherwise ignored |
 | `COST expr STEPS n` | evaluating expr takes exactly n interpreter steps (at most 20,000) |
 | `QUEUE GOAL pred` / `QUEUE fun` | puts a side idea on the agenda: a goal, or a candidate word; the current work carries on |
-| `NEXT` | takes the oldest agenda item; the next item must be its `GOAL`, or a `DEF` of the queued function. Ends the current episode |
+| `NEXT` | takes the oldest agenda item; the next statement must be its `GOAL`, or a `DEF` of the queued function. Ends the current episode |
 | `SURPRISE s` | right after a bet is settled: s = −log2 of the probability the bet gave to what happened, in bits |
 
 **Holes:** a sequence may contain one `HOLE`. Its filler comes after the `EOS` and ends with `END` (`BOS … HOLE … EOS filler END`); the checker puts it in place of the hole and checks the result, so any correct filler passes.
@@ -100,7 +100,7 @@ Every other expression is *used*: it stands for its value. A quote *mentions* on
 
 - `QUOTE x` takes exactly **one complete expression**, never evaluated. Fixed arities say where it ends: `QUOTE ADD INT<2> INT<3>` is three tokens after `QUOTE`, and `QUOTE ADD` alone is a syntax error because `ADD` is owed two arguments.
 - `TOK t` takes exactly **one token**, whatever its arity: `TOK ADD` is the token itself. A token that is already a complete expression has one canonical form, `QUOTE`: `TOK TRUE` prints as `QUOTE TRUE`.
-- `SPAN a b` is tokens a to b (inclusive) of the current sequence as a quote, counting `BOS` as 0, after any `HOLE` is filled. It may only point at tokens before the item it is in, and the span must be one complete expression or one token, otherwise `ERR`. Outside a checked sequence it is always `ERR`.
+- `SPAN a b` is tokens a to b (inclusive) of the current sequence as a quote, counting `BOS` as 0, after any `HOLE` is filled. It may only point at tokens before the statement it is in, and the span must be one complete expression or one token, otherwise `ERR`. Outside a checked sequence it is always `ERR`.
 - Two quotes are equal when their text is (literals in canonical form). A quote never equals the value of the expression it holds.
 - `KIND q` is the part of speech of the token heading q, from the type table: values, slots, variables, lists and records are `NOUN`; operators are `VERB`, except tests (they return `BOOL` from arguments that aren't all `BOOL`, e.g. `LT`, `EQ`), which are `ADJ`; connectives like `AND` are `VERB`; everything else (syntax, teaching and episode tokens) is `MARK`. A `NEW` word is classed by what it is now: a function is a `VERB`, a word known from examples an `ADJ`, otherwise a `NOUN`.
 - Vectors: a quote is the bundle of position ⊛ token atom, bound to an `EXPR` role; a symbol is its own atom.
@@ -143,13 +143,13 @@ The agenda is a first-in, first-out list of side ideas: goals that aren't steps 
 | syntax | random bracket shapes, some with a hole, some padded |
 | logic | random boolean expressions with their values; holes |
 | values | comparisons of every value kind, records vs. their spelled-out form, lists, slots |
-| compute | random well-typed programs (INT, NUM, BOOL, STR, lists of INT, with lists also built by `CONS`, `CONCAT` and folds) with their values; vector-algebra items; holes as program synthesis |
+| compute | random well-typed programs (INT, NUM, BOOL, STR, lists of INT, with lists also built by `CONS`, `CONCAT` and folds) with their values; vector-algebra statements; holes as program synthesis |
 | teach | `EVAL`/`RESULT`; definitions with uses and `EXPAND`; words learned from examples with `ASK`; `SAME`/`DIFF` from algebraic rewrites or unrelated functions |
 | quote | an expression used and quoted (equal values, different quotes); `KIND` of random words, programs and freshly defined or example-defined words; `SPAN` back at part of an earlier expression, copied, classed or compared; `PART` applied, mapped, filtered, and checked `SAME` as its `LAM` (and `DIFF` from the flipped one) |
 | edit | repairs: a definition with one small slip, tests that fail, the `PATCH`, tests that pass (sometimes with the fix as a hole); plain edits followed by `EXPAND` |
 | episode | episodes with a goal predicate and a budget, solved by filtering, by probing candidates, or with failed actions and wrong answers |
-| think | programs evaluated piece by piece, bottom-up, with an occasional slip caught by `OOPS`; episodes solved by thinking first and acting once, paying for a search (often after its `COST`) only when thinking fails; `COST` items for random programs |
-| belief | exact `CHANCE` items; rounds of `BET`/`DRAW`/outcome/`SURPRISE` on a predicate (sometimes a defined word) and lists; holes for the probability. Certain chances (0 and 1) are kept rare |
+| think | programs evaluated piece by piece, bottom-up, with an occasional slip caught by `OOPS`; episodes solved by thinking first and acting once, paying for a search (often after its `COST`) only when thinking fails; `COST` statements for random programs |
+| belief | exact `CHANCE` statements; rounds of `BET`/`DRAW`/outcome/`SURPRISE` on a predicate (sometimes a defined word) and lists; holes for the probability. Certain chances (0 and 1) are kept rare |
 | agenda | solved episodes that queue a nearby goal (one constant changed), mid-task or after, sometimes taking it up with `NEXT`; a chunk used repeatedly while working, queued as a candidate word and sometimes defined |
 
 Every answer is computed by the interpreter, so a generator can choose a bad question but never a wrong answer, and every sequence is run through the checker again before it is written. No sequence appears twice in a run, across all shards, counting sequences that differ only in names as the same; the run tops itself up to the requested count. Random programs keep to what a person would write: every `LET` and every function body uses the variable it binds and isn't just that variable, and `IF` never tests a constant. Words get random `NEW` numbers in the text; the model never sees them.

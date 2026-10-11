@@ -11,7 +11,7 @@ split is composing pieces it learned apart, not recalling what it saw.
                 and defines words elsewhere)
   wrap_at       a WRAP that needs AT (training has WRAP and AT, never together)
 """
-from .check import sequence_items
+from .check import sequence_statements
 from .syntax import SyntaxErr, children
 
 TAGS = {"lit", "var", "word", "slot", "op", "lam", "let", "list", "rec", "hole", "part"}
@@ -19,7 +19,7 @@ DEEP_OPS = 8   # under 0.3% of ordinary generated sequences reach this
 
 
 def nodes(x):
-    """Every AST node anywhere inside an item (or any nesting of tuples and lists)."""
+    """Every AST node anywhere inside a statement (or any nesting of tuples and lists)."""
     if isinstance(x, tuple) and x and x[0] in TAGS:
         yield x
     if isinstance(x, (tuple, list)):
@@ -34,21 +34,21 @@ def op_depth(n):
     return d + (n[0] in ("op", "lam", "let", "part"))
 
 
-def _fold_in_map(items):
+def _fold_in_map(stmts):
     return any(n[0] == "op" and n[1] == "MAP" and any(m[0] == "op" and m[1] == "FOLD" for m in nodes(n[2][0]))
-               for n in nodes(items))
+               for n in nodes(stmts))
 
 
-def _deep(items):
-    return any(op_depth(n) >= DEEP_OPS for n in nodes(items))
+def _deep(stmts):
+    return any(op_depth(n) >= DEEP_OPS for n in nodes(stmts))
 
 
-def _bet_on_word(items):
-    return any(it[0] == "bet" and it[2] is not None and it[2][0] == "word" for it in items)
+def _bet_on_word(stmts):
+    return any(it[0] == "bet" and it[2] is not None and it[2][0] == "word" for it in stmts)
 
 
-def _wrap_at(items):
-    return any(it[0] == "patch" and any(e[0] == "wrap" and e[1] is not None for e in it[2]) for it in items)
+def _wrap_at(stmts):
+    return any(it[0] == "patch" and any(e[0] == "wrap" and e[1] is not None for e in it[2]) for it in stmts)
 
 
 RULES = {"fold_in_map": _fold_in_map, "deep": _deep, "bet_on_word": _bet_on_word, "wrap_at": _wrap_at}
@@ -57,7 +57,7 @@ RULES = {"fold_in_map": _fold_in_map, "deep": _deep, "bet_on_word": _bet_on_word
 def heldout(text):
     """Names of the rules a sequence matches; empty means it may be training data."""
     try:
-        items = sequence_items(text)
+        stmts = sequence_statements(text)
     except SyntaxErr:
         return []
-    return [name for name, rule in RULES.items() if rule(items)]
+    return [name for name, rule in RULES.items() if rule(stmts)]

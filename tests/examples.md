@@ -410,7 +410,7 @@ One generator and checker per group, all ordinary code:
 | values | random values and comparisons | evaluator (VSA encoders for computed tokens) |
 | compute | random typed programs, depth-limited; vector algebra | interpreter |
 | teach | random definitions, uses, example sets drawn from a library of predicates | interpreter, plus equivalence testing on random inputs for `SAME` |
-| quote | an expression used and quoted; KIND of random words, programs and defined words; SPAN back into earlier items; PART applied, mapped, filtered and compared with its LAM | interpreter, with the checker telling SPAN where it is |
+| quote | an expression used and quoted; KIND of random words, programs and defined words; SPAN back into earlier statements; PART applied, mapped, filtered and compared with its LAM | interpreter, with the checker telling SPAN where it is |
 | edit | correct definitions with one small slip (a constant, a swapped operator, a dropped or extra wrapper); tests that fail, the patch, tests that pass | interpreter applies the patch and reruns the tests |
 | episode | random goals (predicates with a known witness); scripted policies of varying quality for the first trajectories | interpreter; reward = YES within budget |
 | think | programs evaluated piece by piece with occasional caught slips; episodes solved by thinking first, paying for a search only when thinking fails; step counts | interpreter, plus exact step counts |

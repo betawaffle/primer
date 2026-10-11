@@ -26,7 +26,7 @@ id form, so two sequences that differ only in their names are equal.
 """
 import hashlib
 
-from .check import fill_hole, sequence_items
+from .check import fill_hole, sequence_statements
 from .syntax import Parser, SyntaxErr, Tok, tokenize
 from .values import parse_payload, show
 from .vocab import VOCAB
@@ -36,7 +36,7 @@ from .vsa import ENCODER_VERSION
 def to_ids(text):
     toks = tokenize(text)
     info = {}
-    sequence_items(toks, info)
+    sequence_statements(toks, info)
     raw = info["where"]                                   # filled position -> position in toks
     filled = {r: f for f, r in enumerate(raw)}
     ids, payloads, refs = [], [], []

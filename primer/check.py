@@ -1,11 +1,11 @@
-"""Checks a whole training sequence: parses its items and verifies every claim.
+"""Checks a whole training sequence: parses its statements and verifies every claim.
 
-A sequence is BOS item* EOS, optionally followed by PADs. If it contains a
+A sequence is BOS statement* EOS, optionally followed by PADs. If it contains a
 HOLE, the filler follows the EOS and ends with END (BOS ... HOLE ... EOS
 filler END): it is put in place of the HOLE and the completed sequence is
 checked. END otherwise only closes a form's body, as in DEF word expr END.
 
-Items:
+Statements:
   expr value                 implicit evaluation (value omitted if expr is already a value)
   EVAL expr RESULT value
   DEF word expr END
@@ -41,7 +41,7 @@ class Report:
     text: str
     errors: list = field(default_factory=list)
     unverified: list = field(default_factory=list)
-    items: int = 0
+    statements: int = 0
     scores: list = field(default_factory=list)   # one {p, outcome, bits} per settled bet
 
     @property
@@ -59,11 +59,11 @@ def _word(p):
 METRICS = ("STEPS",)   # what COST can measure; FLOPS, WALL, ... come with the Lab
 
 
-def parse_items(toks, starts=None, links=None):
-    """Items of a sequence body. If starts is a list, each item's first token
-    position is appended to it; if links is a dict, it gets each variable's
-    binder position (see Parser)."""
-    p, items = Parser(toks), []
+def parse_statements(toks, starts=None, links=None):
+    """Statements of a sequence body. If starts is a list, each statement's
+    first token position is appended to it; if links is a dict, it gets each
+    variable's binder position (see Parser)."""
+    p, stmts = Parser(toks), []
     if links is not None:
         p.links = links
     while p.peek() is not None:
@@ -75,27 +75,27 @@ def parse_items(toks, starts=None, links=None):
             p.next()
             w, body = _word(p), p.expr()
             p.expect("END")
-            items.append(("def", w, body))
+            stmts.append(("def", w, body))
         elif n == "EVAL":
             p.next()
             e = p.expr()
             if p.at("RESULT"):
                 p.next()
-                items.append(("eval", e, p.expr()))
+                stmts.append(("eval", e, p.expr()))
             else:
-                items.append(("eval", e, None))
+                stmts.append(("eval", e, None))
         elif n == "EXPAND":
             p.next()
             w = _word(p)
             p.expect("RESULT")
-            items.append(("expand", w, p.expr()))
+            stmts.append(("expand", w, p.expr()))
         elif n == "EX":
             p.next()
             x = p.expr()
             pol = p.next().name
             if pol not in ("IS", "ISNOT"):
                 raise SyntaxErr(f"expected IS or ISNOT, got {pol}")
-            items.append(("ex", x, pol == "IS", _word(p)))
+            stmts.append(("ex", x, pol == "IS", _word(p)))
         elif n == "ASK":
             p.next()
             x, w = p.expr(), _word(p)
@@ -103,52 +103,52 @@ def parse_items(toks, starts=None, links=None):
             ans = p.next().name
             if ans not in ("YES", "NO"):
                 raise SyntaxErr(f"expected YES or NO, got {ans}")
-            items.append(("ask", x, w, ans == "YES"))
+            stmts.append(("ask", x, w, ans == "YES"))
         elif n in ("SAME", "DIFF"):
             p.next()
-            items.append((n.lower(), p.expr(), p.expr()))
+            stmts.append((n.lower(), p.expr(), p.expr()))
         elif n in ("GOAL", "BUDGET", "OBS"):
             p.next()
-            items.append((n.lower(), p.expr()))
+            stmts.append((n.lower(), p.expr()))
         elif n == "ACT":
             p.next()
             a = p.next().name
             if a not in ("EVAL", "DONE"):
                 raise SyntaxErr(f"ACT takes EVAL or DONE, got {a}")
-            items.append(("act", a.lower(), p.expr()))
+            stmts.append(("act", a.lower(), p.expr()))
         elif n == "ERR":
             p.next()
-            items.append(("err",))
+            stmts.append(("err",))
         elif n == "BET":
             p.next()
             prob = p.expr()
             if p.at("ACT"):
-                items.append(("bet", prob, None, None))
+                stmts.append(("bet", prob, None, None))
             else:
-                items.append(("bet", prob, p.expr(), p.expr()))
+                stmts.append(("bet", prob, p.expr(), p.expr()))
         elif n == "OOPS":
             p.next()
-            items.append(("oops",))
+            stmts.append(("oops",))
         elif n == "QUEUE":
             p.next()
             if p.at("GOAL"):
                 p.next()
-                items.append(("queue", "goal", p.expr()))
+                stmts.append(("queue", "goal", p.expr()))
             else:
-                items.append(("queue", "word", p.expr()))
+                stmts.append(("queue", "word", p.expr()))
         elif n == "NEXT":
             p.next()
-            items.append(("next",))
+            stmts.append(("next",))
         elif n == "COST":
             p.next()
             e = p.expr()
             metric = p.next().name
             if metric not in METRICS:
                 raise SyntaxErr(f"COST needs a metric ({', '.join(METRICS)}), got {metric}")
-            items.append(("cost", e, p.expr()))
+            stmts.append(("cost", e, p.expr()))
         elif n in ("DRAW", "SURPRISE"):
             p.next()
-            items.append((n.lower(), p.expr()))
+            stmts.append((n.lower(), p.expr()))
         elif n == "PATCH":
             p.next()
             w, edits = _word(p), []
@@ -170,17 +170,17 @@ def parse_items(toks, starts=None, links=None):
             p.next()
             if not edits:
                 raise SyntaxErr("PATCH needs at least one edit")
-            items.append(("patch", w, edits))
+            stmts.append(("patch", w, edits))
         elif n in ("YES", "NO"):
             p.next()
-            items.append(("outcome", n == "YES"))
+            stmts.append(("outcome", n == "YES"))
         else:
             e = p.expr()
             if is_literal(e):
-                items.append(("implicit", e, None))
+                stmts.append(("implicit", e, None))
             else:
-                items.append(("implicit", e, p.expr()))
-    return items
+                stmts.append(("implicit", e, p.expr()))
+    return stmts
 
 
 # ---- comparing functions by testing them --------------------------------
@@ -255,21 +255,21 @@ def fill_hole(toks):
     return [toks[i] for i in where], where
 
 
-def sequence_items(text, info=None):
-    """Parse a whole sequence into items, with any HOLE already filled in.
+def sequence_statements(text, info=None):
+    """Parse a whole sequence into statements, with any HOLE already filled in.
     If info is a dict, it gets the sequence's tokens ("tokens", after filling),
-    each item's first token position ("starts", counting BOS as 0), each
+    each statement's first token position ("starts", counting BOS as 0), each
     variable's binder ("links", positions after filling) and where each
     filled token was in the text ("where")."""
     toks, where = fill_hole(tokenize(text) if isinstance(text, str) else text)
     starts, links = [], {}
-    items = parse_items(toks[1:-1], starts, links)
+    stmts = parse_statements(toks[1:-1], starts, links)
     if info is not None:
         info["tokens"] = [str(t) for t in toks]
         info["starts"] = [i + 1 for i in starts]
         info["links"] = {q + 1: None if b is None else b + 1 for q, b in links.items()}
         info["where"] = where
-    return items
+    return stmts
 
 
 COST_FUEL = 20_000   # the most steps a COST claim can be about
@@ -319,11 +319,11 @@ def check(text, truth=None, bets="exact", agenda=()):
     rep = Report(text)
     info = {}
     try:
-        items = sequence_items(text, info)
+        stmts = sequence_statements(text, info)
     except SyntaxErr as e:
         rep.errors.append(f"syntax: {e}")
         return rep
-    rep.items = len(items)
+    rep.statements = len(stmts)
 
     ctx = Context()
     ctx.tokens = info["tokens"]
@@ -349,17 +349,17 @@ def check(text, truth=None, bets="exact", agenda=()):
         b = bet["open"]
         return b if b and b["action"] else None
 
-    for idx, it in enumerate(items):
+    for idx, it in enumerate(stmts):
         tag = it[0]
-        where = f"item {idx + 1} ({tag})"
-        ctx.before = info["starts"][idx]   # SPAN points back, never at the item itself
+        where = f"statement {idx + 1} ({tag})"
+        ctx.before = info["starts"][idx]   # SPAN points back, never at the statement itself
         # CLEAN may snap to any value the sequence has shown so far, but never
         # to the answer it is being checked against.
         answer = it[2] if tag in ("implicit", "eval", "cost") else None
         for part in it[1:]:
             if isinstance(part, tuple) and part is not answer:
                 remember_literals(part, ctx)
-        retracted = tag == "eval" and idx + 1 < len(items) and items[idx + 1] == ("oops",)
+        retracted = tag == "eval" and idx + 1 < len(stmts) and stmts[idx + 1] == ("oops",)
         if taking:
             want_kind, want_text = taking
             taking = None
@@ -388,7 +388,7 @@ def check(text, truth=None, bets="exact", agenda=()):
             remember_literals(expected, ctx)
 
         elif tag == "oops":
-            prev = items[idx - 1] if idx else None
+            prev = stmts[idx - 1] if idx else None
             if not prev or prev[0] != "eval" or prev[2] is None:
                 err(f"{where}: OOPS follows EVAL ... RESULT, the thought it withdraws")
 

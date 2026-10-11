@@ -5,7 +5,7 @@ rejection, so each rule gets a generator aimed at it; the result is still
 checked against the rule, so a near miss is simply drawn again.
 """
 from ..split import RULES, heldout
-from .groups import Retry, _hole_item, _item, _program, _seq, gen_belief, gen_edit
+from .groups import Retry, _hole_statement, _statement, _program, _seq, gen_belief, gen_edit
 from .programs import ProgramGen, op
 from ..values import show
 
@@ -17,12 +17,12 @@ def _fold_in_map(r):
     node = op("MAP", ("lam", fold), pg.expr("LINT", 1))
     if r.random() < 0.25:
         from .groups import _eval
-        return _hole_item(r, node, show(_eval(node))), None
-    return _seq(_item(node)), None
+        return _hole_statement(r, node, show(_eval(node))), None
+    return _seq(_statement(node)), None
 
 
 def _deep(r):
-    return _seq(_item(_program(r, depth=r.randint(5, 6)))), None
+    return _seq(_statement(_program(r, depth=r.randint(5, 6)))), None
 
 
 TEST_GENERATORS = {
