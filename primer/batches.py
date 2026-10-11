@@ -21,7 +21,7 @@ Each batch row is one context of T positions packed with whole sequences
             is its de Bruijn index instead)
   loss      False where training puts no loss on the token (OOPS-retracted
             values, and fill)
-  allowed   only if every record has one (see primer/grammar.py): which
+  allowed   only if every record has one (see primer/recognizer.py): which
             tokens the grammar allows at each position, for evaluation
 
 The targets are the next position's id, ref and design, within one sequence.

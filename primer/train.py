@@ -14,7 +14,6 @@ import argparse
 import hashlib
 import json
 import math
-import multiprocessing as mp
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -22,8 +21,8 @@ from pathlib import Path
 import torch
 
 from .batches import Batches, Design, read_shards
-from .grammar import allowed_mask
 from .model import Config, Model, to_torch
+from .recognizer import allowed_mask
 
 
 def vocab_digest():
@@ -69,7 +68,7 @@ def main(argv=None):
     ap.add_argument("--warmup", type=int, default=200)
     ap.add_argument("--eval", type=int, default=500, help="evaluate and checkpoint every N steps")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--no-grammar", action="store_true", help="skip the grammar-leak metrics (their masks are slow)")
+    ap.add_argument("--no-grammar", action="store_true", help="skip the grammar-leak metrics")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     for f, v in asdict(Config()).items():
         if isinstance(v, (int, float)) and f != "vocab":
@@ -85,9 +84,8 @@ def main(argv=None):
         recs = read_shards(a.test)
         if not a.no_grammar:
             t0 = time.time()
-            with mp.Pool() as pool:
-                for r, m in zip(recs, pool.map(allowed_mask, [r["text"] for r in recs], chunksize=8)):
-                    r["allowed"] = m
+            for r in recs:
+                r["allowed"] = allowed_mask(r["ids"])
             print(f"grammar masks for {len(recs)} test sequences in {time.time() - t0:.0f}s")
         test = Batches(recs, a.context, a.batch, design, a.seed + 1)
     model = Model(c, design.table).to(a.device)
