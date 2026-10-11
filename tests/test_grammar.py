@@ -16,8 +16,10 @@ def names(prefix):
 class TestGrammar(unittest.TestCase):
     def test_forced(self):
         self.assertEqual(names(""), {"BOS"})
-        self.assertEqual(names("BOS DEF"), {"NEW", "HOLE"})    # a HOLE can stand for anything
-        self.assertEqual(names("BOS DEF NEW0 LAM V0"), {"END", "HOLE"})
+        self.assertEqual(names("BOS EXPAND NEW0"), {"RESULT", "HOLE"})    # a HOLE can stand for anything
+        after_def = names("BOS DEF<NEW0> LAM V0")                   # DEF binds its word and needs no END
+        self.assertIn("EOS", after_def)
+        self.assertNotIn("END", after_def)
         self.assertEqual(names("BOS ADD INT<1> INT<2> INT<3> EOS"), {"PAD"})
 
     def test_open(self):
@@ -26,8 +28,8 @@ class TestGrammar(unittest.TestCase):
         self.assertIn("DEF", after_value)
         self.assertNotIn("END", after_value)
         self.assertNotIn("EOS", names("BOS ADD INT<1>"))      # ADD is owed an argument
-        self.assertIn("REF", names("BOS DEF NEW0 LAM"))
-        self.assertIn("REF", names("BOS DEF NEW0 INT<1> END EVAL"))   # NEW0 is a word now
+        self.assertIn("REF", names("BOS DEF<NEW0> LAM"))
+        self.assertIn("REF", names("BOS DEF<NEW0> INT<1> EVAL"))   # NEW0 is a word now
 
     def test_hole(self):
         self.assertIn("INT", names("BOS ADD HOLE INT<1> INT<2> EOS"))

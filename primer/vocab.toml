@@ -10,9 +10,12 @@
 #
 # args: argument types in order (their count is the arity). ret: result type.
 # vsa: what the fixed half of the embedding is (atom, ordered, computed, zero).
-# form: for a token that heads a statement, what follows it (DEF: "word expr
-# END"). This is the statement grammar; primer/forms.py says how to read it.
+# form: for a token that heads a statement, what follows it (PATCH: "word
+# ((AT expr)? edit)+ END"). This is the statement grammar; primer/forms.py
+# says how to read it.
 # part: what the form is part of, if not a statement ("edit": inside PATCH).
+# binds: the token itself binds the word it is about, so no NEW follows it.
+# Text writes the word as its payload (DEF<NEW3>); the id form drops it.
 #
 # [[name]] rows are families of names the text form uses for bound things
 # (V0, NEW3, R12: any number). The model never sees the numbers: each name
@@ -35,7 +38,7 @@ note = "variable, de Bruijn in text: V0 is the nearest enclosing LAM or LET, V1 
 prefix = "NEW"
 group = "teach"
 binder = "NEW"
-note = "word whose meaning DEF or EX sets inside one sequence; its first appearance binds it"
+note = "word whose meaning DEF or EX sets inside one sequence; its first appearance binds it (DEF<NEW3> binds NEW3 at the DEF)"
 
 [[group]]
 name = "syntax"
@@ -94,7 +97,7 @@ id = 1
 name = "END"
 group = "syntax"
 vsa = "atom"
-note = "closes a form's body, as in DEF word expr END, and a HOLE's filler"
+note = "closes a form's variable-length body, as in PATCH word edit... END, and a HOLE's filler"
 
 [[token]]
 id = 2
@@ -310,7 +313,7 @@ name = "REF"
 group = "values"
 ret = "ANY"
 vsa = "zero"
-note = "model form of any use of a name (V0, NEW3, R3 in text): points at the position of its binder (LAM, LET, NEW or SLOT) instead of carrying a number. A variable free inside a quote has no binder to point at and carries its de Bruijn index as payload"
+note = "model form of any use of a name (V0, NEW3, R3 in text): points at the position of its binder (LAM, LET, NEW, DEF or SLOT) instead of carrying a number. A variable free inside a quote has no binder to point at and carries its de Bruijn index as payload"
 
 # ---- compute: functions, arithmetic, lists, records and vector algebra ------
 
@@ -621,7 +624,9 @@ id = 67
 name = "DEF"
 group = "teach"
 vsa = "atom"
-form = "word expr END"
+form = "expr"
+binds = true
+note = "DEF<NEW3> expr: NEW3 means expr from here on. DEF is the word's binder: later uses are REFs to it"
 
 [[token]]
 id = 68
@@ -629,7 +634,7 @@ name = "NEW"
 group = "teach"
 ret = "ANY"
 vsa = "atom"
-note = "model form of a word's first appearance (NEW3 in DEF NEW3 ... or EX x IS NEW3): binds a fresh word; later uses are REFs to it"
+note = "model form of a word's first appearance (EX x IS NEW3, or any first use not in a DEF): binds a fresh word; later uses are REFs to it"
 
 [[token]]
 id = 69

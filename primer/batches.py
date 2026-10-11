@@ -15,7 +15,7 @@ Each batch row is one context of T positions packed with whole sequences
             no head can learn absolute positions
   time      event time in seconds, and time_known; shards have no times
             column yet, so time is unknown everywhere for now
-  ref       for a REF, the row index of its binder (LAM, LET, NEW or SLOT);
+  ref       for a REF, the row index of its binder (LAM, LET, NEW, DEF or SLOT);
             -1 elsewhere, and for a free variable inside a quote
   loss      False where training puts no loss on the token (OOPS-retracted
             values, and PAD)
@@ -35,7 +35,7 @@ from .values import parse_payload
 from .vocab import VOCAB
 from . import vsa
 
-BINDERS = {VOCAB[n].id for n in ("LAM", "LET", "NEW", "SLOT")}
+BINDERS = {VOCAB[n].id for n in ("LAM", "LET", "NEW", "DEF", "SLOT")}
 PAD = VOCAB["PAD"].id
 REF = VOCAB["REF"].id
 RESULT = VOCAB["RESULT"].id

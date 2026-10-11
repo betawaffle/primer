@@ -16,7 +16,7 @@ except ImportError:
 
 TEXTS = [
     "BOS ADD INT<2> INT<3> INT<5> EOS",
-    "BOS DEF NEW0 LAM ADD V0 INT<1> END EVAL APP NEW0 INT<4> RESULT INT<5> EOS",
+    "BOS DEF<NEW0> LAM ADD V0 INT<1> EVAL APP NEW0 INT<4> RESULT INT<5> EOS",
     "BOS APP LAM LET MUL V0 V0 ADD V0 V1 INT<3> INT<12> EOS",
 ]
 DESIGN = Design(16)
@@ -46,7 +46,7 @@ class TestBatches(unittest.TestCase):
         # refs move with their sequence's place in the row and point at binders
         for i in np.nonzero(r["ref"] >= 0)[0]:
             self.assertEqual(r["ids"][i], VOCAB["REF"].id)
-            self.assertIn(VOCAB.by_id[r["ids"][r["ref"][i]]].name, ("LAM", "LET", "NEW", "SLOT"))
+            self.assertIn(VOCAB.by_id[r["ids"][r["ref"][i]]].name, ("LAM", "LET", "NEW", "DEF", "SLOT"))
             self.assertEqual(r["seq"][i], r["seq"][r["ref"][i]])
         # positions count up by one inside a sequence, from a random start
         for s in range(len(rs)):

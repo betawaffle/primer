@@ -3,13 +3,13 @@
 A sequence is BOS statement* EOS, optionally followed by PADs. If it contains a
 HOLE, the filler follows the EOS and ends with END (BOS ... HOLE ... EOS
 filler END): it is put in place of the HOLE and the completed sequence is
-checked. END otherwise only closes a form's body, as in DEF word expr END.
+checked. END otherwise only closes a variable-length body, as in PATCH.
 
 Statements (their grammar is the `form` of each head token in vocab.toml;
 primer/forms.py parses them):
   expr value                 implicit evaluation (value omitted if expr is already a value)
   EVAL expr RESULT value
-  DEF word expr END
+  DEF<word> expr
   EXPAND word RESULT expr
   EX x IS word | EX x ISNOT word
   ASK x word RESULT YES|NO
@@ -21,7 +21,7 @@ primer/forms.py parses them):
   EVAL expr RESULT wrong OOPS      a thought withdrawn: wrong must really be wrong
   COST expr STEPS n                expr takes n interpreter steps
   QUEUE GOAL pred | QUEUE fun      put a side idea on the agenda
-  NEXT  GOAL pred | NEXT DEF word fun END   take up the oldest agenda item
+  NEXT  GOAL pred | NEXT DEF<word> fun       take up the oldest agenda item
 
 QUOTE, TOK, SPAN, PART and KIND are ordinary expressions; the checker only
 tells SPAN where it is, so it can point back at earlier tokens.

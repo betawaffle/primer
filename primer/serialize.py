@@ -13,6 +13,9 @@ one becomes a binder token where it is bound and a REF everywhere else:
                 it stands, inside a quote of part of a body, keeps its index
                 as the REF's payload instead)
   NEW3          NEW at its first appearance, REF to that NEW afterwards
+  DEF<NEW3>     DEF binds the word itself: a bare DEF, and NEW3 is a REF to
+                it afterwards (a DEF of a word already bound is a DEF whose
+                entry in the reference table points at that binder)
   R12<NUM 5>    SLOT carrying the payload; a bare R12 is a REF to the
                 latest SLOT of that name before it
 
@@ -51,6 +54,12 @@ def to_ids(text):
                 payload = str(tok.index)
             else:
                 refs.append((i, raw[b]))
+        elif tok.binds and payload is not None:     # DEF<NEW3>: the name goes, DEF stays
+            payload = None
+            if t.payload in words:
+                refs.append((i, words[t.payload]))
+            else:
+                words[t.payload] = i
         elif tok.family == "NEW":
             if t.name in words:
                 name = "REF"
@@ -89,7 +98,11 @@ def from_ids(rec):
               if t.name in ("LAM", "LET") and not (f and filled[f - 1].name == "TOK")}   # TOK LAM binds nothing
     at = {r: f for f, r in enumerate(where)}
     for i, t in enumerate(toks):
-        if t.name == "NEW":
+        if VOCAB[t.name].binds and not (at[i] and filled[at[i] - 1].name == "TOK"):    # TOK DEF binds nothing
+            if t.ref is None:
+                names[i] = f"NEW{sum(n.startswith('NEW') for n in names.values())}"
+            out.append(f"{t.name}<{names[t.ref if t.ref is not None else i]}>")
+        elif t.name == "NEW":
             names[i] = f"NEW{sum(n.startswith('NEW') for n in names.values())}"
             out.append(names[i])
         elif t.name == "SLOT":
