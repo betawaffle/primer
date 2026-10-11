@@ -5,7 +5,8 @@ HOLE, the filler follows the EOS and ends with END (BOS ... HOLE ... EOS
 filler END): it is put in place of the HOLE and the completed sequence is
 checked. END otherwise only closes a form's body, as in DEF word expr END.
 
-Statements:
+Statements (their grammar is the `form` of each head token in vocab.toml;
+primer/forms.py parses them):
   expr value                 implicit evaluation (value omitted if expr is already a value)
   EVAL expr RESULT value
   DEF word expr END
@@ -30,10 +31,10 @@ import math
 from dataclasses import dataclass, field
 
 from .edit import EditErr, apply_edit
+from .forms import parse_statement
 from .interp import Context, apply, evaluate, remember_literals
 from .syntax import Parser, SyntaxErr, is_literal, parse_expr, tokenize, unparse
 from .values import ERR, Closure, Ostensive, kind, show, valeq
-from .vocab import VOCAB
 
 
 @dataclass
@@ -49,137 +50,18 @@ class Report:
         return not self.errors
 
 
-def _word(p):
-    t = p.next()
-    if VOCAB[t.name].family != "NEW":
-        raise SyntaxErr(f"expected a word NEW0..NEW15, got {t}")
-    return t.name
-
-
-METRICS = ("STEPS",)   # what COST can measure; FLOPS, WALL, ... come with the Lab
-
-
 def parse_statements(toks, starts=None, links=None):
-    """Statements of a sequence body. If starts is a list, each statement's
-    first token position is appended to it; if links is a dict, it gets each
-    variable's binder position (see Parser)."""
+    """Statements of a sequence body, parsed by the forms in vocab.toml (see
+    primer/forms.py). If starts is a list, each statement's first token
+    position is appended to it; if links is a dict, it gets each variable's
+    binder position (see Parser)."""
     p, stmts = Parser(toks), []
     if links is not None:
         p.links = links
     while p.peek() is not None:
         if starts is not None:
             starts.append(p.pos)
-        t = p.peek()
-        n = t.name
-        if n == "DEF":
-            p.next()
-            w, body = _word(p), p.expr()
-            p.expect("END")
-            stmts.append(("def", w, body))
-        elif n == "EVAL":
-            p.next()
-            e = p.expr()
-            if p.at("RESULT"):
-                p.next()
-                stmts.append(("eval", e, p.expr()))
-            else:
-                stmts.append(("eval", e, None))
-        elif n == "EXPAND":
-            p.next()
-            w = _word(p)
-            p.expect("RESULT")
-            stmts.append(("expand", w, p.expr()))
-        elif n == "EX":
-            p.next()
-            x = p.expr()
-            pol = p.next().name
-            if pol not in ("IS", "ISNOT"):
-                raise SyntaxErr(f"expected IS or ISNOT, got {pol}")
-            stmts.append(("ex", x, pol == "IS", _word(p)))
-        elif n == "ASK":
-            p.next()
-            x, w = p.expr(), _word(p)
-            p.expect("RESULT")
-            ans = p.next().name
-            if ans not in ("YES", "NO"):
-                raise SyntaxErr(f"expected YES or NO, got {ans}")
-            stmts.append(("ask", x, w, ans == "YES"))
-        elif n in ("SAME", "DIFF"):
-            p.next()
-            stmts.append((n.lower(), p.expr(), p.expr()))
-        elif n in ("GOAL", "BUDGET", "OBS"):
-            p.next()
-            stmts.append((n.lower(), p.expr()))
-        elif n == "ACT":
-            p.next()
-            a = p.next().name
-            if a not in ("EVAL", "DONE"):
-                raise SyntaxErr(f"ACT takes EVAL or DONE, got {a}")
-            stmts.append(("act", a.lower(), p.expr()))
-        elif n == "ERR":
-            p.next()
-            stmts.append(("err",))
-        elif n == "BET":
-            p.next()
-            prob = p.expr()
-            if p.at("ACT"):
-                stmts.append(("bet", prob, None, None))
-            else:
-                stmts.append(("bet", prob, p.expr(), p.expr()))
-        elif n == "OOPS":
-            p.next()
-            stmts.append(("oops",))
-        elif n == "QUEUE":
-            p.next()
-            if p.at("GOAL"):
-                p.next()
-                stmts.append(("queue", "goal", p.expr()))
-            else:
-                stmts.append(("queue", "word", p.expr()))
-        elif n == "NEXT":
-            p.next()
-            stmts.append(("next",))
-        elif n == "COST":
-            p.next()
-            e = p.expr()
-            metric = p.next().name
-            if metric not in METRICS:
-                raise SyntaxErr(f"COST needs a metric ({', '.join(METRICS)}), got {metric}")
-            stmts.append(("cost", e, p.expr()))
-        elif n in ("DRAW", "SURPRISE"):
-            p.next()
-            stmts.append((n.lower(), p.expr()))
-        elif n == "PATCH":
-            p.next()
-            w, edits = _word(p), []
-            while not p.at("END"):
-                at = None
-                if p.at("AT"):
-                    p.next()
-                    at = p.expr()
-                e = p.next().name
-                if e == "REPLACE":
-                    edits.append(("replace", at, p.expr(), p.expr()))
-                elif e == "WRAP":
-                    old, o = p.expr(), p.next().name
-                    if not VOCAB[o].args or o in ("LAM", "LET"):
-                        raise SyntaxErr(f"WRAP needs an operator, got {o}")
-                    edits.append(("wrap", at, old, o, [p.expr() for _ in range(VOCAB[o].arity - 1)]))
-                else:
-                    raise SyntaxErr(f"expected REPLACE, WRAP or AT in PATCH, got {e}")
-            p.next()
-            if not edits:
-                raise SyntaxErr("PATCH needs at least one edit")
-            stmts.append(("patch", w, edits))
-        elif n in ("YES", "NO"):
-            p.next()
-            stmts.append(("outcome", n == "YES"))
-        else:
-            e = p.expr()
-            if is_literal(e):
-                stmts.append(("implicit", e, None))
-            else:
-                stmts.append(("implicit", e, p.expr()))
+        stmts.append(parse_statement(p))
     return stmts
 
 
@@ -304,6 +186,14 @@ def bits(p, outcome):
     return 0.0 - math.log2(q) if q > 0 else math.inf   # 0.0 - avoids printing -0
 
 
+def _edit(at, e):
+    """An edit statement, ("replace", old, new) or ("wrap", old, (op, args)),
+    as apply_edit takes it."""
+    if e[0] == "replace":
+        return ("replace", at, e[1], e[2])
+    return ("wrap", at, e[1], e[2][0], e[2][1])
+
+
 def check(text, truth=None, bets="exact", agenda=()):
     """Check one sequence. truth maps an example-defined word to the text of
     a predicate that defines it, for checking ASK answers about it.
@@ -393,7 +283,8 @@ def check(text, truth=None, bets="exact", agenda=()):
                 err(f"{where}: OOPS follows EVAL ... RESULT, the thought it withdraws")
 
         elif tag == "queue":
-            _, what, node = it
+            _, goal, node = it
+            what = "goal" if goal else "word"
             if not isinstance(value_of(node), Closure):
                 err(f"{where}: QUEUE takes a goal predicate or a function")
                 continue
@@ -438,11 +329,11 @@ def check(text, truth=None, bets="exact", agenda=()):
                 continue
             body = defs[w]
             try:
-                for e in edits:
-                    at = None if e[1] is None else value_of(e[1])
+                for at, e in edits:
+                    at = None if at is None else value_of(at)
                     if at is not None and kind(at) != "INT":
                         raise EditErr("AT needs an INT")
-                    body = apply_edit(body, (e[0], at, *e[2:]))
+                    body = apply_edit(body, _edit(at, e))
             except EditErr as x:
                 err(f"{where}: {x}")
                 continue
@@ -470,8 +361,8 @@ def check(text, truth=None, bets="exact", agenda=()):
                     err(f"{where}: expansion of {w} behaves differently: {diff}")
 
         elif tag == "ex":
-            _, x, positive, w = it
-            xv = value_of(x)
+            _, x, pol, w = it
+            positive, xv = pol == "IS", value_of(x)
             cur = ctx.words.get(w)
             if cur is None:
                 cur = ctx.words[w] = Ostensive(w, [], [])
@@ -483,7 +374,8 @@ def check(text, truth=None, bets="exact", agenda=()):
                     err(f"{where}: {w} of {show(xv)} is {show(r)}")
 
         elif tag == "ask":
-            _, x, w, yes = it
+            _, x, w, ans = it
+            yes = ans == "YES"
             xv, cur = value_of(x), ctx.words.get(w)
             if isinstance(cur, Closure):
                 r = _call(cur, (xv,), ctx)
@@ -538,7 +430,7 @@ def check(text, truth=None, bets="exact", agenda=()):
                     err(f"{where}: no budget left")
                 ep["budget"] -= 1
             v = value_of(it[2])
-            if it[1] == "eval":
+            if it[1] == "EVAL":
                 ep["pending"] = ("eval", v)
             else:
                 ok = ep["goal"] is not None and v is not ERR and _call(ep["goal"], (v,), ctx) is True
@@ -564,7 +456,8 @@ def check(text, truth=None, bets="exact", agenda=()):
                 settle(False)
 
         elif tag == "bet":
-            _, prob, pred, lst = it
+            _, prob, drawn_from = it
+            pred, lst = drawn_from or (None, None)
             if bet["open"]:
                 err(f"{where}: the previous bet is not settled yet")
             p = value_of(prob)
@@ -595,20 +488,20 @@ def check(text, truth=None, bets="exact", agenda=()):
             if not any(valeq(x, y) for y in b["xs"]):
                 err(f"{where}: {show(x)} is not in the bet's list")
             b["drawn"], b["truth"] = True, _call(b["f"], (x,), ctx)
-        elif tag == "outcome" and ep["pending"] and ep["pending"][0] == "done":
+        elif tag in ("yes", "no") and ep["pending"] and ep["pending"][0] == "done":
             pend, ep["pending"] = ep["pending"], None
-            if pend[1] != it[1]:
+            if pend[1] != (tag == "yes"):
                 err(f"{where}: DONE answer {'satisfies' if pend[1] else 'does not satisfy'} the goal")
             if action_bet():
-                settle(it[1])
-        elif tag == "outcome":
+                settle(tag == "yes")
+        elif tag in ("yes", "no"):
             b = bet["open"]
             if not b or not b["drawn"]:
                 err(f"{where}: YES/NO follows a DRAW or an ACT DONE")
                 continue
-            if b["truth"] is not it[1]:
+            if b["truth"] is not (tag == "yes"):
                 err(f"{where}: the draw {'passes' if b['truth'] is True else 'fails'} the bet's predicate")
-            settle(it[1])
+            settle(tag == "yes")
         elif tag == "surprise":
             b, bet["settled"] = bet["settled"], None
             s = value_of(it[1])
