@@ -1,0 +1,12 @@
+{"layers": 2, "d": 64, "heads": 4, "acc": 0.9926, "params": 113641}
+depth  0: 0.9871 of 6294
+depth  1: 0.9939 of 2967
+depth  2: 0.9928 of 2901
+depth  3: 0.9986 of 2211
+depth  4: 0.9992 of 1289
+depth  5: 1.0000 of 628
+depth  6: 1.0000 of 230
+depth  7: 1.0000 of 92
+depth  8: 1.0000 of 43
+depth  9: 1.0000 of 11
+depth 10: 1.0000 of 6
