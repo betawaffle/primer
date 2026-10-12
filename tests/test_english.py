@@ -1,4 +1,4 @@
-"""Tokens to simple English: every token reads, and no two sequences read the same."""
+"""Tokens to pseudocode and English: every token reads, and no two sequences read the same."""
 import random
 import re
 import unittest
@@ -30,27 +30,26 @@ class TestEnglish(unittest.TestCase):
 
     def test_sentences(self):
         cases = {
-            "BOS ADD INT<2> MUL INT<3> INT<4> INT<14> EOS": ["2 plus (3 times 4) is 14."],
-            "BOS LT NUM<2> HOLE TRUE EOS NUM<7> END": ["It is true that 2.0 is less than ___.", "The blank is 7.0."],
+            "BOS ADD INT<2> MUL INT<3> INT<4> INT<14> SUB SUB INT<1> INT<2> SUB INT<3> INT<4> INT<0> EOS":
+                ["2 + 3 * 4 is 14.", "1 - 2 - (3 - 4) is 0."],
+            "BOS NEG INT<3> INT<-3> EOS": ["-(3) is -3."],     # not the number -3
+            "BOS LT NUM<2> HOLE TRUE EOS NUM<7> END": ["It is true that 2.0 < ___.", "The blank is 7.0."],
             "BOS DEF<NEW1> LAM LAM MAX V1 V0 EVAL APP APP NEW1 INT<3> INT<8> RESULT INT<8> EOS":
-                ["Let w1 mean the function that takes x and y and returns the larger of x and y.",
-                 "Work out w1 applied to 3 and 8: 8."],
+                ["Let w1 mean (x, y) => max(x, y).", "Work out w1(3, 8): 8."],
             "BOS EX INT<4> ISNOT NEW2 ASK INT<10> NEW2 RESULT YES EOS": ["4 is not a w2.", "Is 10 a w2? Yes."],
             # an edit names its variables as the definition does, at the place it applies
             "BOS DEF<NEW0> LAM ADD V0 LET INT<2> V0 PATCH NEW0 AT INT<1> WRAP V0 NEG END EOS":
-                ["Let w0 mean the function that takes x and returns x plus (let y be 2 in y).",
-                 "Change w0: turn the second y into (the negative of y). Now w0 means the function that takes x and"
-                 " returns x plus (let y be 2 in the negative of y)."],
+                ["Let w0 mean x => x + (let y = 2 in y).",
+                 "Change w0: turn the second y into -y. Now w0 means x => x + (let y = 2 in -y)."],
             "BOS MAP LAM HOLE [ INT<1> ] [ INT<2> ] EOS MUL V0 INT<2> END":
-                ["(the function that takes x and returns ___) applied to each item of [1] is [2].", "The blank is x times 2."],
-            "BOS DEF<NEW2> LAM GT V0 INT<1> GOAL NEW2 EOS":
-                ["Let w2 mean the function that takes x and returns x is more than 1.",
-                 "Goal: find a value that passes w2."],
+                ["map(x => ___, [1]) is [2].", "The blank is x * 2."],
             # a body that runs on to the end gets brackets when something follows it
-            "BOS LET INT<3> MUL V0 V0 INT<9> EOS": ["(let x be 3 in x times x) is 9."],
+            "BOS LET INT<3> MUL V0 V0 INT<9> EVAL APP LAM ADD V0 INT<1> INT<2> RESULT INT<3> EOS":
+                ["(let x = 3 in x * x) is 9.", "Work out (x => x + 1)(2): 3."],
             "BOS GOAL LAM GT V0 INT<1> BUDGET INT<1> ACT DONE INT<2> YES EOS":
-                ["Goal: find x where x is more than 1.",
-                 "Budget: 1.", "Submit 2.", "Yes."],
+                ["Goal: find x where x > 1.", "Budget: 1.", "Submit 2.", "Yes."],
+            "BOS DEF<NEW2> LAM GT V0 INT<1> GOAL NEW2 EOS":
+                ["Let w2 mean x => x > 1.", "Goal: find a value that passes w2."],
         }
         for text, want in cases.items():
             with self.subTest(text):
@@ -81,7 +80,7 @@ class TestEnglish(unittest.TestCase):
                 text, _ = generate(r, g)
                 en = to_english(text)
                 with self.subTest(group=g, text=text[:120]):
-                    bare = re.sub(r"the token \S+", "", en)
+                    bare = re.sub(r"token\(\S+?\)", "", en)
                     self.assertIsNone(re.search(r"\b(NEW|V|R)\d+\b|\b[A-Z]{3,}\b", bare), en)
 
 

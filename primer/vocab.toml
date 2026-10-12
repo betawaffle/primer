@@ -16,11 +16,15 @@
 # part: what the form is part of, if not a statement ("edit": inside PATCH).
 # binds: the token itself binds the word it is about, so no NEW follows it.
 # Text writes the word as its payload (DEF<NEW3>); the id form drops it.
-# en: the token in simple English, for the translator at the edge (see
-# primer/english.py). {0} {1} ... are its arguments, or a form's captures in
-# order; a compound one gets brackets unless written {0!}. {v} is the name a
-# binder introduces. {0?} reads a test as a condition ("x where ...").
-# {1|IS=is a|ISNOT=is not a} says which word a choice gives. [a|b] is a if every placeholder in it has a value, else b.
+# en: how the token reads at the edge (see primer/english.py): pseudocode
+# for expressions, short English for statements. {0} {1} ... are its
+# arguments, or a form's captures in order; one that binds looser than the
+# token gets brackets, unless written {0!}. {v} is the name a binder
+# introduces. {0?} reads a test as a condition ("x where ...").
+# {1|IS=is a|ISNOT=is not a} says which word a choice gives.
+# prec: how tightly an expression template binds (100: a call or a name;
+# 0: open to the right, like x => ...). assoc = "left": the first argument
+# may bind as loosely as the token itself (a - b - c). [a|b] is a if every placeholder in it has a value, else b.
 #
 # [[name]] rows are families of names the text form uses for bound things
 # (V0, NEW3, R12: any number). The model never sees the numbers: each name
@@ -167,7 +171,8 @@ group = "logic"
 args = ["BOOL"]
 ret = "BOOL"
 vsa = "atom"
-en = "not {0}"
+en = "!{0}"
+prec = 90
 
 [[token]]
 id = 11
@@ -176,7 +181,9 @@ group = "logic"
 args = ["BOOL", "BOOL"]
 ret = "BOOL"
 vsa = "atom"
-en = "{0} and {1}"
+en = "{0} && {1}"
+prec = 40
+assoc = "left"
 note = "lazy in second argument"
 
 [[token]]
@@ -186,7 +193,9 @@ group = "logic"
 args = ["BOOL", "BOOL"]
 ret = "BOOL"
 vsa = "atom"
-en = "{0} or {1}"
+en = "{0} || {1}"
+prec = 30
+assoc = "left"
 note = "lazy in second argument"
 
 [[token]]
@@ -196,7 +205,8 @@ group = "logic"
 args = ["BOOL", "BOOL"]
 ret = "BOOL"
 vsa = "atom"
-en = "{0} implies {1}"
+en = "implies({0!}, {1!})"
+prec = 100
 note = "lazy in second argument"
 
 [[token]]
@@ -206,7 +216,8 @@ group = "logic"
 args = ["ANY", "ANY"]
 ret = "BOOL"
 vsa = "atom"
-en = "{0} equals {1}"
+en = "{0} == {1}"
+prec = 50
 
 [[token]]
 id = 15
@@ -215,7 +226,8 @@ group = "logic"
 args = ["ANY", "ANY"]
 ret = "BOOL"
 vsa = "atom"
-en = "{0} does not equal {1}"
+en = "{0} != {1}"
+prec = 50
 
 [[token]]
 id = 16
@@ -224,7 +236,8 @@ group = "logic"
 args = ["BOOL", "ANY", "ANY"]
 ret = "ANY"
 vsa = "atom"
-en = "if {0} then {1} else {2}"
+en = "if {0!} then {1!} else {2!}"
+prec = 0
 note = "only the taken branch is evaluated"
 
 # ---- values: the value kinds, ordering, and slots ---------------------------
@@ -275,7 +288,7 @@ name = "NONE"
 group = "values"
 ret = "NONE"
 vsa = "atom"
-en = "nothing"
+en = "none"
 
 [[token]]
 id = 23
@@ -284,7 +297,8 @@ group = "values"
 args = ["ORD", "ORD"]
 ret = "BOOL"
 vsa = "atom"
-en = "{0} is less than {1}"
+en = "{0} < {1}"
+prec = 50
 
 [[token]]
 id = 24
@@ -293,7 +307,8 @@ group = "values"
 args = ["ORD", "ORD"]
 ret = "BOOL"
 vsa = "atom"
-en = "{0} is more than {1}"
+en = "{0} > {1}"
+prec = 50
 
 [[token]]
 id = 25
@@ -302,7 +317,8 @@ group = "values"
 args = ["ORD", "ORD"]
 ret = "BOOL"
 vsa = "atom"
-en = "{0} is at most {1}"
+en = "{0} <= {1}"
+prec = 50
 
 [[token]]
 id = 26
@@ -311,7 +327,8 @@ group = "values"
 args = ["ORD", "ORD"]
 ret = "BOOL"
 vsa = "atom"
-en = "{0} is at least {1}"
+en = "{0} >= {1}"
+prec = 50
 
 [[token]]
 id = 27
@@ -338,7 +355,8 @@ group = "compute"
 args = ["BODY"]
 ret = "FUN"
 vsa = "atom"
-en = "the function that takes {v} and returns {0!}"
+en = "{v} => {0!}"
+prec = 0
 note = "binds V0 inside its body"
 
 [[token]]
@@ -348,7 +366,9 @@ group = "compute"
 args = ["FUN", "ANY"]
 ret = "ANY"
 vsa = "atom"
-en = "{0} applied to {1}"
+en = "{0}({1!})"
+prec = 100
+assoc = "left"
 
 [[token]]
 id = 31
@@ -357,7 +377,8 @@ group = "compute"
 args = ["ANY", "BODY"]
 ret = "ANY"
 vsa = "atom"
-en = "let {v} be {0} in {1!}"
+en = "let {v} = {0!} in {1!}"
+prec = 0
 note = "binds the first argument as V0 inside the body"
 
 [[token]]
@@ -367,7 +388,7 @@ group = "compute"
 args = ["OP", "ANY"]
 ret = "FUN"
 vsa = "atom"
-en = "..."
+en = "_"
 note = "PART op x: op with its first argument filled in, a function of the rest (PART SUB x = LAM SUB x V0)"
 
 [[token]]
@@ -377,7 +398,9 @@ group = "compute"
 args = ["NUMERIC", "NUMERIC"]
 ret = "NUMERIC"
 vsa = "atom"
-en = "{0} plus {1}"
+en = "{0} + {1}"
+prec = 60
+assoc = "left"
 
 [[token]]
 id = 34
@@ -386,7 +409,9 @@ group = "compute"
 args = ["NUMERIC", "NUMERIC"]
 ret = "NUMERIC"
 vsa = "atom"
-en = "{0} minus {1}"
+en = "{0} - {1}"
+prec = 60
+assoc = "left"
 
 [[token]]
 id = 35
@@ -395,7 +420,9 @@ group = "compute"
 args = ["NUMERIC", "NUMERIC"]
 ret = "NUMERIC"
 vsa = "atom"
-en = "{0} times {1}"
+en = "{0} * {1}"
+prec = 70
+assoc = "left"
 
 [[token]]
 id = 36
@@ -404,7 +431,9 @@ group = "compute"
 args = ["NUMERIC", "NUMERIC"]
 ret = "NUMERIC"
 vsa = "atom"
-en = "{0} divided by {1}"
+en = "{0} / {1}"
+prec = 70
+assoc = "left"
 
 [[token]]
 id = 37
@@ -413,7 +442,9 @@ group = "compute"
 args = ["NUMERIC", "NUMERIC"]
 ret = "NUMERIC"
 vsa = "atom"
-en = "the remainder of {0} divided by {1}"
+en = "{0} % {1}"
+prec = 70
+assoc = "left"
 note = "remainder with the sign of the divisor, so DIV and MOD agree: a = b * DIV a b + MOD a b"
 
 [[token]]
@@ -423,7 +454,8 @@ group = "compute"
 args = ["NUMERIC", "NUMERIC"]
 ret = "NUMERIC"
 vsa = "atom"
-en = "the smaller of {0} and {1}"
+en = "min({0!}, {1!})"
+prec = 100
 
 [[token]]
 id = 39
@@ -432,7 +464,8 @@ group = "compute"
 args = ["NUMERIC", "NUMERIC"]
 ret = "NUMERIC"
 vsa = "atom"
-en = "the larger of {0} and {1}"
+en = "max({0!}, {1!})"
+prec = 100
 
 [[token]]
 id = 40
@@ -441,7 +474,8 @@ group = "compute"
 args = ["NUMERIC"]
 ret = "NUMERIC"
 vsa = "atom"
-en = "the negative of {0}"
+en = "-{0}"
+prec = 90
 
 [[token]]
 id = 41
@@ -450,7 +484,8 @@ group = "compute"
 args = ["NUMERIC"]
 ret = "NUMERIC"
 vsa = "atom"
-en = "the absolute value of {0}"
+en = "abs({0!})"
+prec = 100
 
 [[token]]
 id = 42
@@ -459,7 +494,8 @@ group = "compute"
 args = ["NUMERIC"]
 ret = "NUM"
 vsa = "atom"
-en = "the natural log of {0}"
+en = "log({0!})"
+prec = 100
 
 [[token]]
 id = 43
@@ -468,7 +504,8 @@ group = "compute"
 args = ["NUMERIC"]
 ret = "NUM"
 vsa = "atom"
-en = "e to the power {0}"
+en = "exp({0!})"
+prec = 100
 
 [[token]]
 id = 44
@@ -477,7 +514,8 @@ group = "compute"
 args = ["LIST"]
 ret = "INT"
 vsa = "atom"
-en = "the length of {0}"
+en = "len({0!})"
+prec = 100
 
 [[token]]
 id = 45
@@ -486,7 +524,9 @@ group = "compute"
 args = ["LIST", "INT"]
 ret = "ANY"
 vsa = "atom"
-en = "the item at position {1} in {0}"
+en = "{0}[{1!}]"
+prec = 100
+assoc = "left"
 
 [[token]]
 id = 46
@@ -495,7 +535,8 @@ group = "compute"
 args = ["ANY", "LIST"]
 ret = "LIST"
 vsa = "atom"
-en = "{0} put in front of {1}"
+en = "cons({0!}, {1!})"
+prec = 100
 note = "CONS x list: x put in front of the list"
 
 [[token]]
@@ -505,7 +546,8 @@ group = "compute"
 args = ["LIST", "LIST"]
 ret = "LIST"
 vsa = "atom"
-en = "{0} followed by {1}"
+en = "concat({0!}, {1!})"
+prec = 100
 note = "the first list followed by the second"
 
 [[token]]
@@ -515,7 +557,8 @@ group = "compute"
 args = ["FUN", "LIST"]
 ret = "LIST"
 vsa = "atom"
-en = "{0} applied to each item of {1}"
+en = "map({0!}, {1!})"
+prec = 100
 
 [[token]]
 id = 49
@@ -524,7 +567,8 @@ group = "compute"
 args = ["FUN", "LIST"]
 ret = "LIST"
 vsa = "atom"
-en = "the items of {1} that pass {0}"
+en = "filter({0!}, {1!})"
+prec = 100
 
 [[token]]
 id = 50
@@ -533,7 +577,8 @@ group = "compute"
 args = ["FUN", "ANY", "LIST"]
 ret = "ANY"
 vsa = "atom"
-en = "{2} folded with {0} starting from {1}"
+en = "fold({0!}, {1!}, {2!})"
+prec = 100
 note = "f is curried: f acc x"
 
 [[token]]
@@ -543,7 +588,8 @@ group = "compute"
 args = ["LIST"]
 ret = "LIST"
 vsa = "atom"
-en = "{0} sorted"
+en = "sort({0!})"
+prec = 100
 
 [[token]]
 id = 52
@@ -552,7 +598,8 @@ group = "compute"
 args = ["LIST", "INT"]
 ret = "LIST"
 vsa = "atom"
-en = "the {1} largest items of {0}"
+en = "topk({0!}, {1!})"
+prec = 100
 
 [[token]]
 id = 53
@@ -561,7 +608,8 @@ group = "compute"
 args = ["LIST"]
 ret = "INT"
 vsa = "atom"
-en = "the position of the smallest item in {0}"
+en = "argmin({0!})"
+prec = 100
 
 [[token]]
 id = 54
@@ -570,7 +618,8 @@ group = "compute"
 args = ["LIST"]
 ret = "INT"
 vsa = "atom"
-en = "the position of the largest item in {0}"
+en = "argmax({0!})"
+prec = 100
 
 [[token]]
 id = 55
@@ -579,7 +628,8 @@ group = "compute"
 args = ["INT"]
 ret = "LIST"
 vsa = "atom"
-en = "the whole numbers below {0}"
+en = "0..<{0}"
+prec = 55
 
 [[token]]
 id = 56
@@ -588,7 +638,8 @@ group = "compute"
 args = ["REC", "STR"]
 ret = "ANY"
 vsa = "atom"
-en = "field {1} of {0}"
+en = "field({0!}, {1!})"
+prec = 100
 
 [[token]]
 id = 57
@@ -597,7 +648,8 @@ group = "compute"
 args = ["REC", "STR", "ANY"]
 ret = "REC"
 vsa = "atom"
-en = "{0} with field {1} set to {2}"
+en = "with({0!}, {1!}, {2!})"
+prec = 100
 
 [[token]]
 id = 58
@@ -606,7 +658,8 @@ group = "compute"
 args = ["REC"]
 ret = "LIST"
 vsa = "atom"
-en = "the keys of {0}"
+en = "keys({0!})"
+prec = 100
 
 [[token]]
 id = 59
@@ -615,7 +668,8 @@ group = "compute"
 args = ["VEC", "VEC"]
 ret = "VEC"
 vsa = "atom"
-en = "{0} bound to {1}"
+en = "bind({0!}, {1!})"
+prec = 100
 
 [[token]]
 id = 60
@@ -624,7 +678,8 @@ group = "compute"
 args = ["VEC", "VEC"]
 ret = "VEC"
 vsa = "atom"
-en = "{0} unbound from {1}"
+en = "unbind({0!}, {1!})"
+prec = 100
 
 [[token]]
 id = 61
@@ -633,7 +688,8 @@ group = "compute"
 args = ["VEC", "VEC"]
 ret = "VEC"
 vsa = "atom"
-en = "{0} bundled with {1}"
+en = "bundle({0!}, {1!})"
+prec = 100
 
 [[token]]
 id = 62
@@ -642,7 +698,8 @@ group = "compute"
 args = ["VEC", "VEC"]
 ret = "NUM"
 vsa = "atom"
-en = "the similarity of {0} and {1}"
+en = "sim({0!}, {1!})"
+prec = 100
 
 [[token]]
 id = 63
@@ -651,7 +708,8 @@ group = "compute"
 args = ["VEC"]
 ret = "ANY"
 vsa = "atom"
-en = "the known value nearest to {0}"
+en = "clean({0!})"
+prec = 100
 
 # ---- teach: defining words and checking claims about them -------------------
 
@@ -766,7 +824,8 @@ group = "quote"
 args = ["QUOTED"]
 ret = "EXPR"
 vsa = "atom"
-en = "the expression “{0!}”"
+en = "`{0!}`"
+prec = 100
 note = "QUOTE x: the expression x as data, not evaluated. x is exactly one complete expression; arities say where it ends"
 
 [[token]]
@@ -776,7 +835,8 @@ group = "quote"
 args = ["TOKEN"]
 ret = "EXPR"
 vsa = "atom"
-en = "the token {0!}"
+en = "token({0!})"
+prec = 100
 note = "TOK t: the single token t as data, without its arguments (TOK ADD is the token, QUOTE ADD x y an expression)"
 
 [[token]]
@@ -786,7 +846,8 @@ group = "quote"
 args = ["INT", "INT"]
 ret = "EXPR"
 vsa = "atom"
-en = "the tokens {0} to {1} from earlier"
+en = "span({0!}, {1!})"
+prec = 100
 note = "SPAN a b: tokens a..b (inclusive, BOS = 0) from earlier in this sequence, as a quote; they must be one expression or one token"
 
 [[token]]
@@ -796,7 +857,8 @@ group = "quote"
 args = ["EXPR"]
 ret = "SYM"
 vsa = "atom"
-en = "the part of speech of {0}"
+en = "kind({0!})"
+prec = 100
 note = "KIND q: part of speech of the token heading q, from the type table: NOUN, VERB, ADJ or MARK"
 
 [[token]]
@@ -962,7 +1024,8 @@ group = "belief"
 args = ["FUN", "LIST"]
 ret = "NUM"
 vsa = "atom"
-en = "the chance that a random item of {1} passes {0}"
+en = "chance({0!}, {1!})"
+prec = 100
 note = "fraction of the list's items the predicate holds for: the chance a uniform draw passes"
 
 [[token]]

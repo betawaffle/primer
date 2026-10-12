@@ -7,7 +7,7 @@ A small typed language for training from-scratch models: a vocabulary of a coupl
 - [docs/decisions.md](docs/decisions.md): design decisions made so far that the code doesn't show yet (model, time, context)
 - [docs/design-notes.md](docs/design-notes.md): where the vocabulary design came from
 - [tests/examples.md](tests/examples.md): hand-written example training data, all checked by the tests
-- [primer/english.py](primer/english.py): reads sequences out in simple English from the `en` templates in vocab.toml (`python3 -m primer.english < data/shard-00000.jsonl`)
+- [primer/english.py](primer/english.py): reads sequences out as pseudocode inside short English sentences, from the `en` templates in vocab.toml (`python3 -m primer.english < data/shard-00000.jsonl`)
 - [primer/model.py](primer/model.py): model v0, a small transformer that reads the id form (VSA + learned embeddings, pointer REFs, gated order and time planes); [primer/train.py](primer/train.py) trains it
 
 ```

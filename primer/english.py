@@ -1,4 +1,6 @@
-"""Tokens to simple English, by templates.
+"""Tokens to a readable form, by templates: pseudocode for expressions
+(x => x * x, map(w0, [1, 2]), 0..<20), short English sentences for
+statements ("Let w0 mean x => x * x.").
 
 The translator at the edge, for reading sequences: one sentence per
 statement. Each token's `en` template in vocab.toml says how it reads; this
@@ -9,13 +11,15 @@ and the pairs can later train a translator both ways.
 
 Templates:
   {0} {1} ...      an operator's arguments, or a form's captures in order
-                   (a captured choice or optional part counts as one); a
-                   compound one is put in brackets
+                   (a captured choice or optional part counts as one); one
+                   that binds looser than the template's prec is put in
+                   brackets (in a statement, only one open to the right)
   {0!}             the same, not bracketed: for where the text around it
                    already says where it ends (a template ending in one
-                   is open, and gets brackets anywhere but at the end)
-  {0?}             a test, read as a condition: "x where x is more than 2"
-                   for a one-input LAM, "a value that passes w4" otherwise
+                   is open, and gets brackets unless the placeholder is
+                   followed by nothing, a comma or a closing bracket)
+  {0?}             a test, read as a condition: "x where x > 2" for a
+                   one-input LAM, "a value that passes w4" otherwise
                    (never bracketed: put it at the end)
   {v}              the name a LAM or LET binds
   {1|IS=is a|ISNOT=is not a}   the word a choice of tokens gives
@@ -57,23 +61,25 @@ _NAME = re.compile(r"[wrv]\d+|[xyzuts]\d*")
 
 
 class Text(str):
-    """Rendered English. Compound text gets brackets where a template asks;
-    open text (ending in a bare placeholder) gets them unless it ends the
-    sentence."""
-    compound = False
+    """Rendered text. It gets brackets where it binds looser (lower prec) than
+    a placeholder needs; open text (ending in a bare placeholder) also gets
+    them at a bare placeholder, unless that ends the template."""
+    prec = 100
     open = False
     where = None    # a one-input LAM read as a condition, for {0?}
 
 
-def _text(s, compound=False, open=False):
+def _text(s, prec=100, open=False):
     t = Text(s)
-    t.compound, t.open = compound, open
+    t.prec, t.open = prec, open
     return t
 
 
-def fill(template, slots, compound=True):
+def fill(template, slots, prec=None, assoc=""):
     """A template with its placeholders filled from slots (a list, or a dict
-    for {v}); a slot is Text, a token name for a choice, or None."""
+    for {v}); a slot is Text, a token name for a choice, or None. prec and
+    assoc are the template's own, for an expression; a statement's (None)
+    only brackets what is open to the right."""
     get = slots.get if isinstance(slots, dict) else lambda k: slots[int(k)] if int(k) < len(slots) else None
 
     def option(m):
@@ -84,16 +90,23 @@ def fill(template, slots, compound=True):
 
     def place(m):
         v, how = get(m.group(1)), m.group(2) or ""
+        if isinstance(v, str) and not isinstance(v, Text):
+            v = _text(v)
         if v is None:
             raise ValueError(f"template {template!r} has no value for {m.group(0)}")
         if how == "?":
             return v.where or fill(PASSES, [v])
         if how.startswith("|"):
             return dict(c.split("=", 1) for c in how[1:].split("|"))[v]
-        bare = how == "!" and (m.end() == len(template) or not getattr(v, "open", False))
-        return v if bare or not getattr(v, "compound", False) else f"({v})"
+        if how == "!":
+            bare = not v.open or template[m.end():m.end() + 1] in ("", ",", ")", "]", "`")
+        elif prec is None:
+            bare = v.prec > 0
+        else:
+            bare = v.prec >= (prec if assoc == "left" and m.start() == 0 else prec + 1)
+        return v if bare else f"({v})"
 
-    return _text(_PLACE.sub(place, template), compound, template.endswith("!}"))
+    return _text(_PLACE.sub(place, template), 100 if prec is None else prec, template.endswith("!}"))
 
 
 def _var_name(level):
@@ -133,11 +146,16 @@ def value(v):
                                      for key, x in v.items()) + "}")
     if k == "EXPR":
         if v.whole:
-            return fill(VOCAB["QUOTE"].en, [Reader().expr(parse_expr(v.text))])
-        return fill(VOCAB["TOK"].en, [v.text])
+            return _fill_tok("QUOTE", [Reader().expr(parse_expr(v.text))])
+        return _fill_tok("TOK", [_text(v.text)])
     if k == "SYM":
         return _text(VOCAB[v.name].en)
     raise ValueError(f"no English for a {k} value")
+
+
+def _fill_tok(name, slots):
+    tok = VOCAB[name]
+    return fill(tok.en, slots, tok.prec, tok.assoc)
 
 
 def _slots(e):
@@ -187,31 +205,32 @@ class Reader:
             return _text("{" + ", ".join(f"{k}: {v}" for k, v in zip(items[::2], items[1::2])) + "}")
         if tag == "lam":
             names, body = [], node
-            while body[0] == "lam":     # curried: the function that takes x and y and returns ...
+            while body[0] == "lam":     # curried: (x, y) => ...
                 names.append(_var_name(len(env) + len(names)))
                 body = body[1]
-            t = fill(VOCAB["LAM"].en, {"v": " and ".join(names), "0": self.expr(body, (*env, *names))})
+            v = names[0] if len(names) == 1 else f"({', '.join(names)})"
+            t = _fill_tok("LAM", {"v": v, "0": self.expr(body, (*env, *names))})
             if len(names) == 1:
                 t.where = fill(WHERE, {"v": names[0], "0": self.expr(body, (*env, *names))})
             return t
         if tag == "let":
             name = _var_name(len(env))
-            return fill(VOCAB["LET"].en, {"v": name, "0": self.expr(node[1], env),
-                                          "1": self.expr(node[2], (*env, name))})
+            return _fill_tok("LET", {"v": name, "0": self.expr(node[1], env),
+                                     "1": self.expr(node[2], (*env, name))})
         if tag == "part":
             tok = VOCAB[node[1]]
-            return fill(tok.en, [self.expr(node[2], env)] + [_text(VOCAB["PART"].en)] * (tok.arity - 1))
+            return _fill_tok(node[1], [self.expr(node[2], env)] + [_text(VOCAB["PART"].en)] * (tok.arity - 1))
         if tag == "op" and node[1] == "APP" and node[2][0][:2] == ("op", "APP"):
             fn, xs = node, []
-            while fn[:2] == ("op", "APP"):   # curried calls read as one: f applied to a and b
+            while fn[:2] == ("op", "APP"):   # curried calls read as one: f(a, b)
                 xs.insert(0, fn[2][1])
                 fn = fn[2][0]
-            ins = " and ".join(fill("{0}", [self.expr(x, env)]) for x in xs)
-            t = fill(VOCAB["APP"].en.replace("{1}", "{1!}"), [self.expr(fn, env), _text(ins)])
-            t.open = False   # each input is bracketed already
-            return t
+            return _fill_tok("APP", [self.expr(fn, env), _text(", ".join(self.expr(x, env) for x in xs))])
         if tag == "op":
-            return fill(VOCAB[node[1]].en, [self.expr(a, env) for a in node[2]])
+            args = [self.expr(a, env) for a in node[2]]
+            if node[1] == "NEG" and node[2][0][0] == "lit":   # -(3), so it can't read as the number -3
+                args[0] = _text(args[0], prec=0)
+            return _fill_tok(node[1], args)
         if tag == "ref":
             raise ValueError("the id form has no names to read; convert it with serialize.from_ids first")
         raise ValueError(node)
@@ -227,7 +246,7 @@ class Reader:
             e, v = stmt[1], stmt[2]
             if v is None:
                 return self.expr(e, env)
-            if v in (("lit", True), ("lit", False)):
+            if v[0] == "lit" and isinstance(v[1], bool):
                 return fill(TRUE_THAT if v[1] else FALSE_THAT, [self.expr(e, env)])
             return fill(IS_VALUE, [self.expr(e, env), self.expr(v, env)])
         if tag == "patch":
@@ -249,7 +268,7 @@ class Reader:
 
     def _target(self, old, env, nth):
         t = self.expr(old, env)
-        return t if nth is None else fill(VOCAB["AT"].en, [nth, t], compound=False)
+        return t if nth is None else fill(VOCAB["AT"].en, [nth, t])
 
     def _flatten(self, e, v, env):
         """A form element's captured value as template slots."""
@@ -306,7 +325,7 @@ class Reader:
 
 def sentence(s):
     first = s.split(" ", 1)[0].rstrip(":,?")
-    if s[:1].islower() and not _NAME.fullmatch(first):
+    if first.isalpha() and first.islower() and not _NAME.fullmatch(first):   # prose, not code
         s = s[0].upper() + s[1:]
     return s if s.endswith((".", "?", "!")) else s + "."
 
