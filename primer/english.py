@@ -47,6 +47,7 @@ IS_VALUE = "{0!} is {1!}"
 FILLER = "the blank is {0!}"           # a HOLE's filler, after the sequence
 PASSES = "a value that passes {0}"     # {0?} for a test that is no one-input LAM
 WHERE = "{v} where {0!}"               # {0?} for a one-input LAM
+NOW_MEANS = "{0}. Now {1} means {2!}"   # after a PATCH whose word's definition we saw
 ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"]
 RAW = "the tokens {0!} with the blank filled by {1!}"   # a HOLE that is no expression or statement
 
@@ -298,7 +299,9 @@ class Reader:
                 except Exception:
                     body = None
         self.defs[word] = body
-        return fill(VOCAB["PATCH"].en, [self.expr(("word", word)), _text(", then ".join(parts))])
+        w = self.expr(("word", word))
+        s = fill(VOCAB["PATCH"].en, [w, _text(", then ".join(parts))])
+        return s if body is None else fill(NOW_MEANS, [_text(s), w, self.expr(body)])
 
 
 def sentence(s):

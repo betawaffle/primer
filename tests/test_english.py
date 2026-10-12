@@ -39,7 +39,8 @@ class TestEnglish(unittest.TestCase):
             # an edit names its variables as the definition does, at the place it applies
             "BOS DEF<NEW0> LAM ADD V0 LET INT<2> V0 PATCH NEW0 AT INT<1> WRAP V0 NEG END EOS":
                 ["Let w0 mean the function that takes x and returns x plus (let y be 2 in y).",
-                 "Change w0: turn the second y into (the negative of y)."],
+                 "Change w0: turn the second y into (the negative of y). Now w0 means the function that takes x and"
+                 " returns x plus (let y be 2 in the negative of y)."],
             "BOS MAP LAM HOLE [ INT<1> ] [ INT<2> ] EOS MUL V0 INT<2> END":
                 ["(the function that takes x and returns ___) applied to each item of [1] is [2].", "The blank is x times 2."],
             "BOS DEF<NEW2> LAM GT V0 INT<1> GOAL NEW2 EOS":
