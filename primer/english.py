@@ -186,7 +186,7 @@ class Reader:
             return _text("{" + ", ".join(f"{k}: {v}" for k, v in zip(items[::2], items[1::2])) + "}")
         if tag == "lam":
             names, body = [], node
-            while body[0] == "lam":     # curried: the function taking x and y to ...
+            while body[0] == "lam":     # curried: the function that takes x and y and returns ...
                 names.append(_var_name(len(env) + len(names)))
                 body = body[1]
             t = fill(VOCAB["LAM"].en, {"v": " and ".join(names), "0": self.expr(body, (*env, *names))})
