@@ -19,8 +19,8 @@
 # en: the token in simple English, for the translator at the edge (see
 # primer/english.py). {0} {1} ... are its arguments, or a form's captures in
 # order; a compound one gets brackets unless written {0!}. {v} is the name a
-# binder introduces. {1|IS=is a|ISNOT=is not a} says which word a choice
-# gives. [a|b] is a if every placeholder in it has a value, else b.
+# binder introduces. {0?} reads a test as a condition ("x where ...").
+# {1|IS=is a|ISNOT=is not a} says which word a choice gives. [a|b] is a if every placeholder in it has a value, else b.
 #
 # [[name]] rows are families of names the text form uses for bound things
 # (V0, NEW3, R12: any number). The model never sees the numbers: each name
@@ -338,7 +338,7 @@ group = "compute"
 args = ["BODY"]
 ret = "FUN"
 vsa = "atom"
-en = "the function taking {v} to {0!}"
+en = "the function that takes {v} and returns {0!}"
 note = "binds V0 inside its body"
 
 [[token]]
@@ -851,7 +851,7 @@ id = 86
 name = "AT"
 group = "edit"
 vsa = "atom"
-en = "{0!} at occurrence {1}"
+en = "the {0!} {1}"
 note = "AT INT<k> before an edit: its target is the k-th occurrence (0-based) of old"
 
 [[token]]
@@ -881,7 +881,7 @@ id = 89
 name = "GOAL"
 group = "episode"
 vsa = "atom"
-en = "goal: find an answer that passes {0!}"
+en = "goal: find {0?}"
 form = "expr"
 
 [[token]]
@@ -999,7 +999,7 @@ id = 102
 name = "QUEUE"
 group = "agenda"
 vsa = "atom"
-en = "save for later: [{0}the goal of an answer that passes |]{1!}"
+en = "save for later: [{0}the goal to find {1?}|{1!}]"
 form = "GOAL? expr"
 note = "QUEUE GOAL pred | QUEUE fun: put a side idea on the agenda (a goal, or a candidate word) without leaving the current work"
 

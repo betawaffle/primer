@@ -33,19 +33,22 @@ class TestEnglish(unittest.TestCase):
             "BOS ADD INT<2> MUL INT<3> INT<4> INT<14> EOS": ["2 plus (3 times 4) is 14."],
             "BOS LT NUM<2> HOLE TRUE EOS NUM<7> END": ["It is true that 2.0 is less than ___.", "The blank is 7.0."],
             "BOS DEF<NEW1> LAM LAM MAX V1 V0 EVAL APP APP NEW1 INT<3> INT<8> RESULT INT<8> EOS":
-                ["Let w1 mean the function taking x and y to the larger of x and y.",
+                ["Let w1 mean the function that takes x and y and returns the larger of x and y.",
                  "Work out w1 applied to 3 and 8: 8."],
             "BOS EX INT<4> ISNOT NEW2 ASK INT<10> NEW2 RESULT YES EOS": ["4 is not a w2.", "Is 10 a w2? Yes."],
             # an edit names its variables as the definition does, at the place it applies
             "BOS DEF<NEW0> LAM ADD V0 LET INT<2> V0 PATCH NEW0 AT INT<1> WRAP V0 NEG END EOS":
-                ["Let w0 mean the function taking x to x plus (let y be 2 in y).",
-                 "Change w0: turn y into (the negative of y) at occurrence 1."],
+                ["Let w0 mean the function that takes x and returns x plus (let y be 2 in y).",
+                 "Change w0: turn the second y into (the negative of y)."],
             "BOS MAP LAM HOLE [ INT<1> ] [ INT<2> ] EOS MUL V0 INT<2> END":
-                ["(the function taking x to ___) applied to each item of [1] is [2].", "The blank is x times 2."],
+                ["(the function that takes x and returns ___) applied to each item of [1] is [2].", "The blank is x times 2."],
+            "BOS DEF<NEW2> LAM GT V0 INT<1> GOAL NEW2 EOS":
+                ["Let w2 mean the function that takes x and returns x is more than 1.",
+                 "Goal: find a value that passes w2."],
             # a body that runs on to the end gets brackets when something follows it
             "BOS LET INT<3> MUL V0 V0 INT<9> EOS": ["(let x be 3 in x times x) is 9."],
             "BOS GOAL LAM GT V0 INT<1> BUDGET INT<1> ACT DONE INT<2> YES EOS":
-                ["Goal: find an answer that passes the function taking x to x is more than 1.",
+                ["Goal: find x where x is more than 1.",
                  "Budget: 1.", "Submit 2.", "Yes."],
         }
         for text, want in cases.items():

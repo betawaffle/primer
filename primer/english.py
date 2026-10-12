@@ -14,6 +14,9 @@ Templates:
   {0!}             the same, not bracketed: for where the text around it
                    already says where it ends (a template ending in one
                    is open, and gets brackets anywhere but at the end)
+  {0?}             a test, read as a condition: "x where x is more than 2"
+                   for a one-input LAM, "a value that passes w4" otherwise
+                   (never bracketed: put it at the end)
   {v}              the name a LAM or LET binds
   {1|IS=is a|ISNOT=is not a}   the word a choice of tokens gives
   [a|b]            a if every placeholder inside it has a value, else b
@@ -42,9 +45,12 @@ TRUE_THAT = "it is true that {0!}"     # implicit statements: expr then its valu
 FALSE_THAT = "it is false that {0!}"
 IS_VALUE = "{0!} is {1!}"
 FILLER = "the blank is {0!}"           # a HOLE's filler, after the sequence
+PASSES = "a value that passes {0}"     # {0?} for a test that is no one-input LAM
+WHERE = "{v} where {0!}"               # {0?} for a one-input LAM
+ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"]
 RAW = "the tokens {0!} with the blank filled by {1!}"   # a HOLE that is no expression or statement
 
-_PLACE = re.compile(r"\{(\w+)(!|\|[^}]*)?\}")
+_PLACE = re.compile(r"\{(\w+)(!|\?|\|[^}]*)?\}")
 _OPTION = re.compile(r"\[([^\]|]*)(?:\|([^\]]*))?\]")
 _NAME = re.compile(r"[wrv]\d+|[xyzuts]\d*")
 
@@ -55,6 +61,7 @@ class Text(str):
     sentence."""
     compound = False
     open = False
+    where = None    # a one-input LAM read as a condition, for {0?}
 
 
 def _text(s, compound=False, open=False):
@@ -78,6 +85,8 @@ def fill(template, slots, compound=True):
         v, how = get(m.group(1)), m.group(2) or ""
         if v is None:
             raise ValueError(f"template {template!r} has no value for {m.group(0)}")
+        if how == "?":
+            return v.where or fill(PASSES, [v])
         if how.startswith("|"):
             return dict(c.split("=", 1) for c in how[1:].split("|"))[v]
         bare = how == "!" and (m.end() == len(template) or not getattr(v, "open", False))
@@ -180,7 +189,10 @@ class Reader:
             while body[0] == "lam":     # curried: the function taking x and y to ...
                 names.append(_var_name(len(env) + len(names)))
                 body = body[1]
-            return fill(VOCAB["LAM"].en, {"v": " and ".join(names), "0": self.expr(body, (*env, *names))})
+            t = fill(VOCAB["LAM"].en, {"v": " and ".join(names), "0": self.expr(body, (*env, *names))})
+            if len(names) == 1:
+                t.where = fill(WHERE, {"v": names[0], "0": self.expr(body, (*env, *names))})
+            return t
         if tag == "let":
             name = _var_name(len(env))
             return fill(VOCAB["LET"].en, {"v": name, "0": self.expr(node[1], env),
@@ -205,9 +217,10 @@ class Reader:
 
     # ---- statements --------------------------------------------------------
 
-    def statement(self, stmt, env=()):
+    def statement(self, stmt, env=(), nth=None):
         """A parsed statement (forms.parse_statement) as English, without the
-        sentence's capital or full stop."""
+        sentence's capital or full stop. nth: for an edit, which occurrence
+        of its target it means ("second"), from AT."""
         tag = stmt[0]
         if tag == "implicit":
             e, v = stmt[1], stmt[2]
@@ -220,7 +233,7 @@ class Reader:
             return self._patch(stmt)
         if tag == "wrap":
             old, (op, args) = stmt[1], stmt[2]
-            return fill(VOCAB["WRAP"].en, [self.expr(old, env), self.expr(("op", op, [old, *args]), env)])
+            return fill(VOCAB["WRAP"].en, [self._target(old, env, nth), self.expr(("op", op, [old, *args]), env)])
         if tag == "def":
             self.defs[stmt[1]] = stmt[2]
         head = tag.upper()
@@ -229,7 +242,13 @@ class Reader:
         for e in FORMS[head].body[1]:
             if _slots(e):
                 slots += self._flatten(e, next(caps), env)
+        if nth is not None:
+            slots[0] = self._target(stmt[1], env, nth)
         return fill(VOCAB[head].en, slots)
+
+    def _target(self, old, env, nth):
+        t = self.expr(old, env)
+        return t if nth is None else fill(VOCAB["AT"].en, [nth, t], compound=False)
 
     def _flatten(self, e, v, env):
         """A form element's captured value as template slots."""
@@ -252,6 +271,14 @@ class Reader:
             return [None] * _slots(e[1]) if v is None else self._flatten(e[1], v, env)
         raise ValueError(f"no generic English for a {tag} element; give its head its own case")
 
+    def _ordinal(self, at, k):
+        if k is None or isinstance(k, bool) or not isinstance(k, int) or k < 0:
+            return _text(f"number {fill('{0}', [self.expr(at)])} counting from 0")
+        if k < len(ORDINALS):
+            return _text(ORDINALS[k])
+        n = k + 1
+        return _text(f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}")
+
     def _patch(self, stmt):
         word, edits = stmt[1], stmt[2]
         body, parts = self.defs.get(word), []
@@ -263,8 +290,7 @@ class Reader:
                 paths = occurrences(body, old)
                 if (k or 0) < len(paths):
                     env = _env_at(body, paths[k or 0])
-            s = self.statement(edit, env)
-            parts.append(s if at is None else fill(VOCAB["AT"].en, [s, self.expr(at)]))
+            parts.append(self.statement(edit, env, None if at is None else self._ordinal(at, k)))
             if body is not None:
                 try:
                     rest = edit[2:] if edit[0] == "replace" else (edit[2][0], edit[2][1])
