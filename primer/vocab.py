@@ -19,6 +19,7 @@ class Token:
     form: str | None = None   # what follows this token in a statement (see primer/forms.py)
     part: str = "statement"   # what its form is a part of
     binds: bool = False       # binds its word itself: DEF<NEW3> in text, a bare DEF in the id form
+    en: str | None = None     # template in simple English (see primer/english.py)
     family: str = ""  # "R", "V" or "NEW" for a name like R3, V0, NEW12
     index: int = -1   # the number in that name
 
@@ -50,7 +51,8 @@ class Vocab:
             seen.add(row["id"])
             tok = Token(id=row["id"], name=row["name"], group=row["group"], args=tuple(row.get("args", ())),
                         ret=row.get("ret", ""), vsa=row.get("vsa", "atom"), note=row.get("note", ""),
-                        form=row.get("form"), part=row.get("part", "statement"), binds=row.get("binds", False))
+                        form=row.get("form"), part=row.get("part", "statement"), binds=row.get("binds", False),
+                        en=row.get("en"))
             v.tokens.append(tok)
             v.by_name[tok.name] = tok
             v.by_id[tok.id] = tok
