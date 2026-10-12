@@ -8,7 +8,8 @@ Uses the GPU when torch sees one (ROCm shows up as cuda) with bf16 autocast,
 else the CPU. Every --eval steps it reports losses and accuracies on the test
 split (held-out combinations, so test accuracy measures composition), how
 much probability it leaks onto tokens the grammar rules out, and
-saves a checkpoint with the config and the vocabulary it was trained on.
+saves a checkpoint with the config and the vocabulary it was trained on
+(model.pt, the latest; best.pt, the one with the lowest test loss).
 """
 import argparse
 import hashlib
@@ -102,7 +103,7 @@ def main(argv=None):
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     log = (out / "log.jsonl").open("a")
-    t0, run, seen = time.time(), {}, 0
+    t0, run, seen, best = time.time(), {}, 0, math.inf
     for step, b in enumerate(train(), 1):
         b = to_torch(b, a.device)
         with autocast():
@@ -127,8 +128,11 @@ def main(argv=None):
             entry["gates"] = gates.mean(-1).tolist()          # per layer, per head
             log.write(json.dumps(entry) + "\n")
             log.flush()
-            torch.save({"model": model.state_dict(), "config": asdict(c), "vocab": vocab_digest(),
-                        "step": step}, out / "model.pt")
+            ckpt = {"model": model.state_dict(), "config": asdict(c), "vocab": vocab_digest(), "step": step}
+            torch.save(ckpt, out / "model.pt")
+            if test and entry["test"]["loss"] < best:     # the best test loss so far: what to keep if it overfits later
+                best = entry["test"]["loss"]
+                torch.save(ckpt, out / "best.pt")
         if step == a.steps:
             break
 
