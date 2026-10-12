@@ -9,7 +9,7 @@ else the CPU. Every --eval steps it reports losses and accuracies on the test
 split (held-out combinations, so test accuracy measures composition), how
 much probability it leaks onto tokens the grammar rules out, and
 saves a checkpoint with the config and the vocabulary it was trained on
-(model.pt, the latest; best.pt, the one with the lowest test loss).
+(model.pt, the latest; best.pt, the one with the highest test exact accuracy).
 """
 import argparse
 import hashlib
@@ -107,7 +107,7 @@ def main(argv=None):
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     log = (out / "log.jsonl").open("a")
-    t0, run, seen, best = time.time(), {}, 0, math.inf
+    t0, run, seen, best = time.time(), {}, 0, -1.0
     for step, b in enumerate(train(), 1):
         b = to_torch(b, a.device)
         with autocast():
@@ -134,8 +134,8 @@ def main(argv=None):
             log.flush()
             ckpt = {"model": model.state_dict(), "config": asdict(c), "vocab": vocab_digest(), "step": step}
             torch.save(ckpt, out / "model.pt")
-            if test and entry["test"]["loss"] < best:     # the best test loss so far: what to keep if it overfits later
-                best = entry["test"]["loss"]
+            if test and entry["test"]["exact_acc"] > best:   # not loss: the pointer head's confidence swings dominate it
+                best = entry["test"]["exact_acc"]
                 torch.save(ckpt, out / "best.pt")
         if step == a.steps:
             break
