@@ -67,6 +67,9 @@ def main(argv=None):
     ap.add_argument("--context", type=int, default=512, help="tokens per row (sequences are packed)")
     ap.add_argument("--lr", type=float, default=3e-3)
     ap.add_argument("--warmup", type=int, default=200)
+    ap.add_argument("--schedule", choices=("cosine", "constant"), default="cosine",
+                    help="after warmup: cosine to zero at --steps, or hold --lr (for long runs, e.g. waiting on grokking)")
+    ap.add_argument("--weight-decay", type=float, default=0.1, help="AdamW decay on weight matrices")
     ap.add_argument("--eval", type=int, default=500, help="evaluate and checkpoint every N steps")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-grammar", action="store_true", help="skip the grammar-leak metrics")
@@ -96,10 +99,11 @@ def main(argv=None):
     autocast = lambda: torch.autocast(a.device.split(":")[0], dtype=torch.bfloat16, enabled=use_bf16)
     decay = [p for n, p in model.named_parameters() if p.ndim >= 2]
     other = [p for n, p in model.named_parameters() if p.ndim < 2]
-    opt = torch.optim.AdamW([{"params": decay, "weight_decay": 0.1}, {"params": other, "weight_decay": 0.0}],
+    opt = torch.optim.AdamW([{"params": decay, "weight_decay": a.weight_decay}, {"params": other, "weight_decay": 0.0}],
                             lr=a.lr, betas=(0.9, 0.95))
-    sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1, (s + 1) / a.warmup) *
-                                              0.5 * (1 + math.cos(math.pi * min(s, a.steps) / a.steps)))
+    shape = (lambda s: 1.0) if a.schedule == "constant" else \
+        (lambda s: 0.5 * (1 + math.cos(math.pi * min(s, a.steps) / a.steps)))
+    sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1, (s + 1) / a.warmup) * shape(s))
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     log = (out / "log.jsonl").open("a")
