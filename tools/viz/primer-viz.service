@@ -11,7 +11,7 @@ After=network-online.target
 ExecStart=/usr/bin/podman run --rm --replace --name primer-viz --network host --security-opt label=disable \
   -v /data/primer/runs:/runs:ro -v %h/work/primer:/repo:ro \
   localhost/primer-gpu:git-20261013 \
-  python3 /repo/tools/viz/server.py --runs /runs --host 127.0.0.1 --host 100.101.212.15 --port 8080
+  python3 /repo/tools/viz/server.py --runs /runs --host 127.0.0.1 --host 100.101.212.15 --host fd7a:115c:a1e0::9638:d410 --port 8080
 ExecStop=/usr/bin/podman stop -t 5 primer-viz
 Restart=on-failure
 RestartSec=15
