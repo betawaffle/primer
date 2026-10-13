@@ -84,6 +84,10 @@ about = "chances, bets and surprise"
 name = "agenda"
 about = "side ideas kept for later"
 
+[[group]]
+name = "world"
+about = "nodes that see things and pass messages, and what each one believes"
+
 # ---- syntax: sequence structure, lists, records and holes -------------------
 
 [[token]]
@@ -921,3 +925,71 @@ group = "agenda"
 vsa = "atom"
 form = ""
 note = "NEXT: start on the oldest agenda item; the next item must be its GOAL or a DEF of its word"
+
+# ---- world: nodes that see things and pass messages, and what each one believes ----
+
+[[token]]
+id = 104
+name = "SEE"
+group = "world"
+vsa = "atom"
+form = "expr expr expr"
+note = "SEE n k v: node n sees that k is v. The world changes: k really is v now"
+
+[[token]]
+id = 105
+name = "SEND"
+group = "world"
+vsa = "atom"
+form = "expr expr expr GOT|LOST"
+note = "SEND a b k GOT|LOST: a tells b what it holds for k. GOT: b now holds it and knows a does; LOST: nothing reaches b. Either way a thinks b has it"
+
+[[token]]
+id = 106
+name = "GOT"
+group = "world"
+vsa = "atom"
+note = "the message arrived"
+
+[[token]]
+id = 107
+name = "LOST"
+group = "world"
+vsa = "atom"
+note = "the message never arrived; the sender can't tell"
+
+[[token]]
+id = 108
+name = "ACTUAL"
+group = "world"
+args = ["ANY"]
+ret = "ANY"
+vsa = "atom"
+note = "ACTUAL k: what k really is, the last value anyone saw (NONE if nobody has)"
+
+[[token]]
+id = 109
+name = "BELIEF"
+group = "world"
+args = ["ANY", "ANY"]
+ret = "ANY"
+vsa = "atom"
+note = "BELIEF n k: what node n holds for k (NONE if it has never heard)"
+
+[[token]]
+id = 110
+name = "THINKS"
+group = "world"
+args = ["ANY", "ANY", "ANY"]
+ret = "ANY"
+vsa = "atom"
+note = "THINKS a b k: what a thinks b holds for k (NONE if a has no idea); BELIEF when a is b"
+
+[[token]]
+id = 111
+name = "WHY"
+group = "world"
+args = ["ANY", "ANY"]
+ret = "ANY"
+vsa = "atom"
+note = "WHY n k: if n is wrong about k, the position of the lost SEND whose arrival would have made it right (the latest, if several would); NONE if n is right or no one lost message explains it"

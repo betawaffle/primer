@@ -1,6 +1,6 @@
 # primer language spec (v0)
 
-Covers eleven vocabulary groups, in bootstrap order (each can be explained using only the ones before it): syntax, logic, values, compute, teach, quote, edit, episode, think, belief and agenda. The Lab v0 actions and schema fields will be appended as further groups.
+Covers twelve vocabulary groups, in bootstrap order (each can be explained using only the ones before it): syntax, logic, values, compute, teach, quote, edit, episode, think, belief, agenda and world. The Lab v0 actions and schema fields will be appended as further groups.
 
 ## Source of truth
 
@@ -90,6 +90,7 @@ Prefix notation with fixed arity: `ADD INT<2> MUL INT<3> INT<4>`. Only lists `[ 
 | `COST expr STEPS n` | evaluating expr takes exactly n interpreter steps (at most 20,000) |
 | `QUEUE GOAL pred` / `QUEUE fun` | puts a side idea on the agenda: a goal, or a candidate word; the current work carries on |
 | `NEXT` | takes the oldest agenda item; the next statement must be its `GOAL`, or a `DEF` of the queued function. Ends the current episode |
+| `SEE n k v` / `SEND a b k GOT\|LOST` | world events (see World): not claims, but the facts that `ACTUAL`, `BELIEF`, `THINKS` and `WHY` answer from. A node can only send what it holds, and not to itself |
 | `SURPRISE s` | right after a bet is settled: s = −log2 of the probability the bet gave to what happened, in bits |
 
 **Holes:** a sequence may contain one `HOLE`. Its filler comes after the `EOS` and ends with `END` (`BOS … HOLE … EOS filler END`); the checker puts it in place of the hole and checks the result, so any correct filler passes.
@@ -126,6 +127,17 @@ The checker has two modes. `check(text)` is for training data: a draw bet must s
 
 The agenda is a first-in, first-out list of side ideas: goals that aren't steps toward the current one, and chunks worth making into words. Within a sequence the checker keeps it; across sequences the harness does (on disk, not in the weights), and `check(text, agenda=[("goal" | "word", text), …])` checks a sequence that starts with `NEXT` against what was queued before. Whether an idea was worth queuing can't be checked inside a sequence; it is scored later, by how much solving it teaches (the learning-progress bandit), which is how the model learns which ideas to write down.
 
+## World
+
+A world of nodes that see things and pass messages, built to teach **false belief**: a node can hold a value the world has moved on from, and others can be wrong about what it holds (the Sally-Anne test). Implemented in `primer/world.py`. Nodes and keys are ordinary values, usually a slot bound to a name (`R0<STR sally>`) and a `STR`.
+
+- `SEE n k v`: n sees that k is v. The world changes: k really is v now, and n holds v.
+- `SEND a b k GOT|LOST`: a tells b what a holds for k. `GOT`: b now holds it, and knows a holds it. `LOST`: nothing reaches b. The sender can't tell which happened, so either way a now thinks b holds what it sent.
+- `ACTUAL k`: the last value anyone saw for k.
+- `BELIEF n k`: what n holds for k. `THINKS a b k`: what a thinks b holds (`BELIEF` when a is b).
+- `WHY n k`: if n is wrong about k, the position of the lost `SEND` whose arrival would have made n right, found by replaying the events with that one message delivered (the latest such message if several would). A message upstream counts: delivering it changes what later messages carry.
+- Anything nobody has information about is `NONE`, and so is `WHY` when n is right or no single lost message explains it.
+
 ## Serialization
 
 - **Text** as above; parse → print → parse is stable.
@@ -152,6 +164,7 @@ The agenda is a first-in, first-out list of side ideas: goals that aren't steps 
 | think | programs evaluated piece by piece, bottom-up, with an occasional slip caught by `OOPS`; episodes solved by thinking first and acting once, paying for a search (often after its `COST`) only when thinking fails; `COST` statements for random programs |
 | belief | exact `CHANCE` statements; rounds of `BET`/`DRAW`/outcome/`SURPRISE` on a predicate (sometimes a defined word) and lists; holes for the probability. Certain chances (0 and 1) are kept rare |
 | agenda | solved episodes that queue a nearby goal (one constant changed), mid-task or after, sometimes taking it up with `NEXT`; a chunk used repeatedly while working, queued as a candidate word and sometimes defined |
+| world | Sally-Anne stories (a thing moves while its first watcher isn't told, sometimes with the news lost on the way); a value relayed down a three-node chain with a hop lost or the source moving on; random gossip among two to four nodes, with questions part way and at the end. Questions favour whoever is wrong: `BELIEF`, `THINKS`, `WHY`, and "is n wrong" (`NEQ BELIEF n k ACTUAL k`) |
 
 Every answer is computed by the interpreter, so a generator can choose a bad question but never a wrong answer, and every sequence is run through the checker again before it is written. No sequence appears twice in a run, across all shards, counting sequences that differ only in names as the same; the run tops itself up to the requested count. Random programs keep to what a person would write: every `LET` and every function body uses the variable it binds and isn't just that variable, and `IF` never tests a constant. Words get random `NEW` numbers in the text; the model never sees them.
 
@@ -165,6 +178,7 @@ Every answer is computed by the interpreter, so a generator can choose a bad que
 | `deep` | an expression 8 or more operators deep | programs up to depth 7 or so |
 | `bet_on_word` | a `BET` on a word defined in the sequence | bets on spelled-out predicates; words used everywhere else |
 | `wrap_at` | a `WRAP` that needs `AT` | `WRAP`, and `AT` with `REPLACE` |
+| `long_relay` | a question about a node whose belief came through 3 or more messages | relays of at most two hops |
 
 `python3 -m primer.gen` writes the training split by default, dropping any sequence that matches a rule. `--split test` writes only matching sequences, from a generator aimed at each rule (`primer/gen/heldout.py`), and adds `"heldout": [rule names]` to each row. `--split all` ignores the split. The two splits are disjoint by construction, and test-split accuracy measures composition rather than recall.
 

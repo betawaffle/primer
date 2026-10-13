@@ -22,6 +22,8 @@ primer/forms.py parses them):
   COST expr STEPS n                expr takes n interpreter steps
   QUEUE GOAL pred | QUEUE fun      put a side idea on the agenda
   NEXT  GOAL pred | NEXT DEF<word> fun       take up the oldest agenda item
+  SEE n k v | SEND a b k GOT|LOST  world events (primer/world.py); not claims,
+                                   but BELIEF, THINKS, ACTUAL and WHY answer from them
 
 QUOTE, TOK, SPAN, PART and KIND are ordinary expressions; the checker only
 tells SPAN where it is, so it can point back at earlier tokens.
@@ -30,6 +32,7 @@ import itertools
 import math
 from dataclasses import dataclass, field
 
+from . import world
 from .edit import EditErr, apply_edit
 from .forms import parse_statement
 from .interp import Context, apply, evaluate, remember_literals
@@ -284,6 +287,22 @@ def check(text, truth=None, bets="exact", agenda=()):
             if not valeq(got, want):
                 err(f"{where}: {unparse(expr)} gives {show(got)}, sequence says {show(want)}")
             remember_literals(expected, ctx)
+
+        elif tag in ("see", "send"):
+            vals = [value_of(x) for x in it[1:4]]
+            if ERR in vals:
+                err(f"{where}: an argument does not evaluate")
+                continue
+            if tag == "send":
+                a, b, k = vals
+                if valeq(a, b):
+                    err(f"{where}: a node doesn't send to itself")
+                    continue
+                if not world.holds(ctx.events, a, k):
+                    err(f"{where}: {show(a)} has nothing to tell about {show(k)}")
+                    continue
+                vals.append(it[4] == "GOT")
+            ctx.events.append((ctx.before, (tag, *vals)))
 
         elif tag == "oops":
             prev = stmts[idx - 1] if idx else None

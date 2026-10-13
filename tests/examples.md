@@ -397,6 +397,37 @@ BOS EVAL APP LAM MUL V0 V0 INT⟨3⟩ RESULT INT⟨9⟩
 
 ---
 
+## world
+
+`SEE SEND GOT LOST ACTUAL BELIEF THINKS WHY`
+
+Nodes see things and pass messages, and a message can be lost. Each node believes only what it saw or was told, so a node can be wrong about the world, and wrong about what another node believes. This is the false-belief test (Sally-Anne). Sally sees the ball in the basket and tells Anne. Anne moves it to the box and tries to tell Sally, but the message is lost:
+```
+BOS SEE R0⟨STR sally⟩ STR⟨ball⟩ STR⟨basket⟩
+    SEND R0 R1⟨STR anne⟩ STR⟨ball⟩ GOT
+    SEE R1 STR⟨ball⟩ STR⟨box⟩
+    SEND R1 R0 STR⟨ball⟩ LOST
+    ACTUAL STR⟨ball⟩ STR⟨box⟩
+    BELIEF R0 STR⟨ball⟩ STR⟨basket⟩
+    THINKS R1 R0 STR⟨ball⟩ STR⟨box⟩
+    WHY R0 STR⟨ball⟩ INT⟨14⟩ EOS
+```
+Sally will look in the basket. Anne thinks Sally knows about the box, since a sender can't tell its message was lost. `WHY` points at the message to blame (the `SEND` at position 14): had it arrived, Sally would be right.
+
+A stale value travels. Ann tells Bob the door is open, locks it, and the update to Bob is lost; Bob passes the old news on to Cara:
+```
+BOS SEE R0⟨STR ann⟩ STR⟨door⟩ STR⟨open⟩
+    SEND R0 R1⟨STR bob⟩ STR⟨door⟩ GOT
+    SEE R0 STR⟨door⟩ STR⟨locked⟩
+    SEND R0 R1 STR⟨door⟩ LOST
+    SEND R1 R2⟨STR cara⟩ STR⟨door⟩ GOT
+    BELIEF R2 STR⟨door⟩ STR⟨open⟩
+    WHY R2 STR⟨door⟩ INT⟨14⟩
+    THINKS R0 R1 STR⟨door⟩ STR⟨locked⟩
+    THINKS R2 R1 STR⟨door⟩ STR⟨open⟩ EOS
+```
+Cara is wrong because of a message that was never sent to her: `WHY` replays the events with the lost one delivered, and Bob would then have passed on "locked".
+
 ## What generates this
 
 One generator and checker per group, all ordinary code:
@@ -414,5 +445,6 @@ One generator and checker per group, all ordinary code:
 | think | programs evaluated piece by piece with occasional caught slips; episodes solved by thinking first, paying for a search only when thinking fails; step counts | interpreter, plus exact step counts |
 | belief | random predicates and lists; exact chances, bets on random draws | interpreter, plus the exact chance and surprise for each bet |
 | agenda | solved episodes that queue a nearby goal (one constant changed), sometimes taking it up; repeated chunks queued as candidate words, sometimes defined | interpreter; NEXT must take the oldest item |
+| world | Sally-Anne stories, relays down a short chain with a hop lost, and random gossip, with questions mostly about whoever is wrong | the world replays the events; WHY replays them again with each lost message delivered |
 
 The curriculum mixes earlier groups back in as later ones are added, so foundations keep getting rehearsed.

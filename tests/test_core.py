@@ -58,6 +58,11 @@ WRONG = [
     "BOS ADD INT<1> INT<2> INT<3> EOS NOT TRUE FALSE EOS",                              # one EOS per sequence
     "BOS ADD INT<1> INT<2> INT<3> EOS INT<3>",                                          # only a HOLE's filler follows EOS
     "BOS ADD INT<1> INT<2> INT<3> EOS HOLE END",                                        # the HOLE comes first
+    "BOS SEE R0<STR a> STR<k> STR<x> SEND R0 R1<STR b> STR<k> LOST BELIEF R1 STR<k> STR<x> EOS",   # it was lost
+    "BOS SEE R0<STR a> STR<k> STR<x> SEND R0 R1<STR b> STR<k> LOST THINKS R0 R1 STR<k> NONE EOS",  # a thinks it arrived
+    "BOS SEE R0<STR a> STR<k> STR<x> SEND R1<STR b> R0 STR<k> GOT EOS",                         # b has nothing to send
+    "BOS SEE R0<STR a> STR<k> STR<x> SEE R0 STR<k> STR<y> BELIEF R0 STR<k> STR<x> EOS",         # beliefs update
+    "BOS SEE R0<STR a> STR<k> STR<x> SEND R0 R1<STR b> STR<k> GOT SEE R0 STR<k> STR<y> WHY R1 STR<k> INT<5> EOS",  # nobody lost anything
 ]
 
 
