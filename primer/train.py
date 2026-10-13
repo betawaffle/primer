@@ -1,20 +1,34 @@
 """Train model v0 on generated shards.
 
     python3 -m primer.gen --count 200000 --out data/
+    python3 -m primer.gen --count 5000 --seed 1 --out data-val/
     python3 -m primer.gen --split test --count 5000 --out data-test/
-    python3 -m primer.train --train data/ --test data-test/ --steps 20000 --out runs/v0
+    python3 -m primer.train --train data/ --val data-val/ --test data-test/ --steps 20000 --out runs/v0
 
 Uses the GPU when torch sees one (ROCm shows up as cuda) with bf16 autocast,
-else the CPU. Every --eval steps it reports losses and accuracies on the test
-split (held-out combinations, so test accuracy measures composition), how
-much probability it leaks onto tokens the grammar rules out, and
-saves a checkpoint with the config and the vocabulary it was trained on
-(model.pt, the latest; best.pt, the one with the highest test exact accuracy).
+else the CPU. Every --eval steps it reports losses and accuracies on three
+evaluation sets, whole and broken down: train (a fixed sample of the training
+data; per generator group), val (the training distribution, but sequences
+training never saw; per group) and test (held-out combinations, so test
+accuracy measures composition; per held-out rule). It
+also reports how much probability leaks onto tokens the grammar rules out.
+
+A run directory keeps everything needed to analyze it later:
+  run.json            commit, options, and which data it read
+  log.jsonl           one entry per evaluation: the recent training batches'
+                      average (train_avg), learning rate, weight norms (total and
+                      per matrix), gradient norm, the evaluations, mixing gates
+  checkpoints/        the weights at every evaluation
+  model.pt            the latest, with optimizer state
+  best.pt             the one with the highest test exact accuracy
 """
 import argparse
 import hashlib
 import json
 import math
+import random
+import subprocess
+import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -31,7 +45,9 @@ def vocab_digest():
 
 
 def evaluate(model, batches, device, autocast, limit=50):
-    """Mean losses, and accuracies pooled over every position (see Model.score)."""
+    """Mean losses, and accuracies pooled over every position (see Model.score).
+    batches is made fresh for each call, so every evaluation sees the same
+    rows with the same dropout and evictions, and the curve has no sampling noise."""
     model.eval()
     tot, n, counts = {}, 0, {}
     with torch.no_grad(), autocast():
@@ -50,7 +66,42 @@ def evaluate(model, batches, device, autocast, limit=50):
     out = {k: v / max(n, 1) for k, v in tot.items()}
     out.update({f"{k}_{'rate' if k in ('leak', 'ungrammatical') else 'acc'}": r / max(m, 1)
                 for k, (r, m) in counts.items()})
+    out["sequences"] = len(batches.recs)
     return out
+
+
+def breakdown(recs, key):
+    """{label: records} for each value of a per-record label (a list labels a record under each)."""
+    out = {}
+    for r in recs:
+        labels = r.get(key) or []
+        for label in labels if isinstance(labels, list) else [labels]:
+            out.setdefault(label, []).append(r)
+    return dict(sorted(out.items()))
+
+
+def provenance(a, argv, data):
+    """What a run needs to be reproduced and compared later: code, options, data."""
+    def git(*args):
+        try:
+            return subprocess.run(["git", *args], cwd=Path(__file__).parent, capture_output=True,
+                                  text=True, timeout=10).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return None
+    return {"argv": list(sys.argv[1:] if argv is None else argv), "options": vars(a),
+            "commit": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain", "--untracked-files=no")),
+            "vocab": vocab_digest(), "torch": torch.__version__,
+            "device": torch.cuda.get_device_name() if a.device.startswith("cuda") else a.device,
+            "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "data": data}
+
+
+def shards_digest(path):
+    path = Path(path)
+    files = sorted(path.glob("*.jsonl")) if path.is_dir() else [path]
+    h = hashlib.sha256()
+    for f in files:
+        h.update(f"{f.name} {f.stat().st_size}\n".encode())
+    return {"path": str(path.resolve()), "shards": len(files), "digest": h.hexdigest()[:16]}
 
 
 def fmt(d):
@@ -60,7 +111,9 @@ def fmt(d):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python3 -m primer.train", description=__doc__.split("\n\n")[0])
     ap.add_argument("--train", required=True, help="directory of training shards")
-    ap.add_argument("--test", help="directory of test-split shards")
+    ap.add_argument("--test", help="directory of test-split shards (held-out combinations)")
+    ap.add_argument("--val", help="directory of train-split shards generated apart from --train (another --seed): "
+                                  "same distribution, unseen sequences, so memorization shows apart from composition")
     ap.add_argument("--out", default="runs/v0")
     ap.add_argument("--steps", type=int, default=2000)
     ap.add_argument("--batch", type=int, default=16)
@@ -70,6 +123,7 @@ def main(argv=None):
     ap.add_argument("--schedule", choices=("cosine", "constant"), default="cosine",
                     help="after warmup: cosine to zero at --steps, or hold --lr (for long runs, e.g. waiting on grokking)")
     ap.add_argument("--weight-decay", type=float, default=0.1, help="AdamW decay on weight matrices")
+    ap.add_argument("--probe", type=int, default=2000, help="training sequences re-evaluated at every eval")
     ap.add_argument("--eval", type=int, default=500, help="evaluate and checkpoint every N steps")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-grammar", action="store_true", help="skip the grammar-leak metrics")
@@ -82,16 +136,34 @@ def main(argv=None):
     torch.manual_seed(a.seed)
     c = Config(**{f: getattr(a, f) for f in asdict(Config()) if hasattr(a, f)})
     design = Design(c.d_design)
-    train = Batches(read_shards(a.train), a.context, a.batch, design, a.seed)
-    test = None
-    if a.test:
-        recs = read_shards(a.test)
+    train_recs = read_shards(a.train)
+    train = Batches(train_recs, a.context, a.batch, design, a.seed)
+    data = {"train": {**shards_digest(a.train), "sequences": len(train_recs)}}
+    evals = {}      # name -> records, each evaluated as a whole and broken down
+
+    def prepare(recs, name):
         if not a.no_grammar:
             t0 = time.time()
             for r in recs:
                 r["allowed"] = allowed_mask(r["ids"])
-            print(f"grammar masks for {len(recs)} test sequences in {time.time() - t0:.0f}s")
-        test = Batches(recs, a.context, a.batch, design, a.seed + 1)
+            print(f"grammar masks for {len(recs)} {name} sequences in {time.time() - t0:.0f}s")
+        evals[name] = recs
+
+    if a.test:
+        recs = read_shards(a.test)
+        data["test"] = {**shards_digest(a.test), "sequences": len(recs)}
+        prepare(recs, "test")
+    if a.val:
+        seen = {r["text"] for r in train_recs}
+        recs = read_shards(a.val)
+        unseen = [r for r in recs if r["text"] not in seen]
+        data["val"] = {**shards_digest(a.val), "sequences": len(unseen), "in_train": len(recs) - len(unseen)}
+        print(f"val: {len(unseen)} sequences, {len(recs) - len(unseen)} dropped as also in train")
+        del seen
+        prepare(unseen, "val")
+    probe = random.Random(a.seed).sample(train_recs, min(a.probe, len(train_recs)))
+    prepare([dict(r) for r in probe], "train")   # sequences it trains on, in eval mode: the memorization side
+    by = {"test": "heldout", "val": "group", "train": "group"}   # per held-out rule; per generator group
     model = Model(c, design.table).to(a.device)
     print(model.describe())
 
@@ -105,7 +177,8 @@ def main(argv=None):
         (lambda s: 0.5 * (1 + math.cos(math.pi * min(s, a.steps) / a.steps)))
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1, (s + 1) / a.warmup) * shape(s))
     out = Path(a.out)
-    out.mkdir(parents=True, exist_ok=True)
+    (out / "checkpoints").mkdir(parents=True, exist_ok=True)
+    (out / "run.json").write_text(json.dumps(provenance(a, argv, data), indent=1) + "\n")
     log = (out / "log.jsonl").open("a")
     t0, run, seen, best = time.time(), {}, 0, -1.0
     for step, b in enumerate(train(), 1):
@@ -114,7 +187,7 @@ def main(argv=None):
             res = model.loss(b)
         opt.zero_grad(set_to_none=True)
         res["loss"].backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        res["grad_norm"] = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)   # before clipping
         opt.step()
         sched.step()
         seen += int((b["seq"] >= 0).sum())
@@ -124,17 +197,24 @@ def main(argv=None):
             print(f"step {step} {fmt(run)} lr {sched.get_last_lr()[0]:.2e} {seen / (time.time() - t0):.0f} tok/s",
                   flush=True)
         if step % a.eval == 0 or step == a.steps:
-            entry = {"step": step, "train": run, "tokens": seen, "seconds": time.time() - t0}
-            if test:
-                entry["test"] = evaluate(model, test, a.device, autocast)
-                print(f"test @ {step}: {fmt(entry['test'])}", flush=True)
+            entry = {"step": step, "train_avg": run, "tokens": seen, "seconds": time.time() - t0,
+                     "lr": sched.get_last_lr()[0],
+                     "weight_norm": float(torch.sqrt(sum((p.float() ** 2).sum() for p in decay))),
+                     "weight_norms": {n: float(p.float().norm()) for n, p in model.named_parameters() if p.ndim >= 2}}
+            for name, recs in evals.items():
+                ev = lambda rs: evaluate(model, Batches(rs, a.context, a.batch, design, a.seed + 1),
+                                         a.device, autocast)
+                entry[name] = ev(recs)
+                entry[f"{name}_by"] = {k: ev(rs) for k, rs in breakdown(recs, by[name]).items()}
+                print(f"{name} @ {step}: {fmt(entry[name])}", flush=True)
             gates = torch.stack([blk.attn.rotary.gates() for blk in model.blocks])
             entry["gates"] = gates.mean(-1).tolist()          # per layer, per head
             log.write(json.dumps(entry) + "\n")
             log.flush()
             ckpt = {"model": model.state_dict(), "config": asdict(c), "vocab": vocab_digest(), "step": step}
-            torch.save(ckpt, out / "model.pt")
-            if test and entry["test"]["exact_acc"] > best:   # not loss: the pointer head's confidence swings dominate it
+            torch.save(ckpt, out / "checkpoints" / f"step-{step:07d}.pt")    # every one, for analysis later
+            torch.save({**ckpt, "optimizer": opt.state_dict(), "schedule": sched.state_dict()}, out / "model.pt")
+            if "test" in entry and entry["test"]["exact_acc"] > best:   # not loss: the pointer head's confidence swings dominate it
                 best = entry["test"]["exact_acc"]
                 torch.save(ckpt, out / "best.pt")
         if step == a.steps:
