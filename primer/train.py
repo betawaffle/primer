@@ -66,8 +66,15 @@ def evaluate(model, batches, device, autocast, limit=50):
     out = {k: v / max(n, 1) for k, v in tot.items()}
     out.update({f"{k}_{'rate' if k in ('leak', 'ungrammatical') else 'acc'}": r / max(m, 1)
                 for k, (r, m) in counts.items()})
+    out.update({f"{k}_n": m for k, (r, m) in counts.items()})     # what each rate is out of, for error bars
     out["sequences"] = len(batches.recs)
     return out
+
+
+@torch.no_grad()
+def weight_norms(model, decay):
+    return {"weight_norm": float(torch.sqrt(sum((p.float() ** 2).sum() for p in decay))),
+            "weight_norms": {n: float(p.float().norm()) for n, p in model.named_parameters() if p.ndim >= 2}}
 
 
 def breakdown(recs, key):
@@ -84,15 +91,39 @@ def provenance(a, argv, data):
     """What a run needs to be reproduced and compared later: code, options, data."""
     def git(*args):
         try:
-            return subprocess.run(["git", *args], cwd=Path(__file__).parent, capture_output=True,
-                                  text=True, timeout=10).stdout.strip()
+            r = subprocess.run(["git", *args], cwd=Path(__file__).parent, capture_output=True, text=True, timeout=10)
         except (OSError, subprocess.SubprocessError):
             return None
+        return r.stdout.strip() if r.returncode == 0 else None
+    status = git("status", "--porcelain", "--untracked-files=no")
     return {"argv": list(sys.argv[1:] if argv is None else argv), "options": vars(a),
-            "commit": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain", "--untracked-files=no")),
+            "commit": git("rev-parse", "HEAD") or head_commit(),
+            "dirty": None if status is None else bool(status),      # None: unknown (no git to ask)
             "vocab": vocab_digest(), "torch": torch.__version__,
             "device": torch.cuda.get_device_name() if a.device.startswith("cuda") else a.device,
             "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "data": data}
+
+
+def head_commit():
+    """The checked-out commit read straight from .git, for machines without git (the training container)."""
+    for d in Path(__file__).resolve().parents:
+        g = d / ".git"
+        if not g.is_dir():
+            continue
+        try:
+            head = (g / "HEAD").read_text().strip()
+            if not head.startswith("ref: "):
+                return head
+            ref = head[5:]
+            if (g / ref).is_file():
+                return (g / ref).read_text().strip()
+            for line in (g / "packed-refs").read_text().splitlines():
+                if line.endswith(" " + ref):
+                    return line.split()[0]
+        except OSError:
+            pass
+        return None
+    return None
 
 
 def shards_digest(path):
@@ -199,8 +230,7 @@ def main(argv=None):
         if step % a.eval == 0 or step == a.steps:
             entry = {"step": step, "train_avg": run, "tokens": seen, "seconds": time.time() - t0,
                      "lr": sched.get_last_lr()[0],
-                     "weight_norm": float(torch.sqrt(sum((p.float() ** 2).sum() for p in decay))),
-                     "weight_norms": {n: float(p.float().norm()) for n, p in model.named_parameters() if p.ndim >= 2}}
+                     **weight_norms(model, decay)}
             for name, recs in evals.items():
                 ev = lambda rs: evaluate(model, Batches(rs, a.context, a.batch, design, a.seed + 1),
                                          a.device, autocast)
