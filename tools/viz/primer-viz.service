@@ -1,0 +1,20 @@
+# Run explorer as a systemd user service, in a rootless container.
+#   cp tools/viz/primer-viz.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now primer-viz
+# Serves the checkout at ~/work/primer and reads /data/primer/runs, both read-only.
+# Listens on localhost and the box's Tailscale address; nothing else.
+[Unit]
+Description=primer run explorer
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/podman run --rm --replace --name primer-viz --network host --security-opt label=disable \
+  -v /data/primer/runs:/runs:ro -v %h/work/primer:/repo:ro \
+  localhost/primer-gpu:git-20261013 \
+  python3 /repo/tools/viz/server.py --runs /runs --host 127.0.0.1 --host 100.101.212.15 --port 8080
+ExecStop=/usr/bin/podman stop -t 5 primer-viz
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=default.target
